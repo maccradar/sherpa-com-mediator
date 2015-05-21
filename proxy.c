@@ -1,5 +1,5 @@
 /*
- * This file is part of the Pick-n-Pack reference implementation
+ * This file is part of the SHERPA proxy implementation
  *
  * Copyright (c) 2015, Department of Mechanical Engineering, KU Leuven, Belgium.
  * All rights reserved.
@@ -31,10 +31,8 @@
 
 #include "defs.h"
 
-/*! \brief Computation function for LCSM creating state of the Line.
-    This function creates the necessary data structures for the Line's LCSM. It
-    assumes the process in which this role is fulfilled already created a resource_t data
-    structure
+/*! \brief Computation function for LCSM creating state of the Proxy.
+    This function creates the necessary data structures for the Proxy's LCSM.
     \param self pointer to resource_t data structure. 
  */
 int creating(resource_t *self) {
@@ -42,7 +40,6 @@ int creating(resource_t *self) {
     self->frontend =  NULL;
     self->backend =  NULL;
     self->backend_resources = zlist_new();
-    self->required_resources = zlist_new();
     self->com =  NULL;
     self->input = NULL;
     self->userinput = NULL;
@@ -54,9 +51,9 @@ int creating(resource_t *self) {
     return 0;
 }
 
-/*! \brief Computation function for LCSM configuring_resources state of the Line.
-    This function configures the necessary resources, i.e. communication channels, for 
-    the Line's LCSM.
+/*! \brief Computation function for LCSM configuring_resources state of the Proxy.
+    This function configures the necessary resources, i.e. communication channels,
+    for the Proxy's LCSM.
     \param self pointer to resource_t data structure. 
  */
 int configuring_resources(resource_t* self) {
@@ -65,8 +62,6 @@ int configuring_resources(resource_t* self) {
     printf("[%s] configuring resources...", self->name);
     // send signal on pipe socket to acknowledge initialization
     zsock_signal (self->pipe, 0);
-    zlist_push(self->required_resources, PNP_QAS_ID);
-    zlist_push(self->required_resources, PNP_PRINTING_ID);
     
     // configuring frontend and backend sockets
     self->frontend = zsock_new_dealer(self->frontend_str);
@@ -79,8 +74,8 @@ int configuring_resources(resource_t* self) {
 
 }
 
-/*! \brief Computation function for LCSM configuring_capabilities state of the Line.
-    This function configures specific parameters to fullfil the role of a Line.
+/*! \brief Computation function for LCSM configuring_capabilities state of the Proxy.
+    This function configures specific parameters to fullfil the role of a Proxy.
     \param self pointer to resource_t data structure. 
  */
 int configuring_capabilities (resource_t* self) {
@@ -88,60 +83,29 @@ int configuring_capabilities (resource_t* self) {
     //  If liveness hits zero, queue is considered disconnected
     self->liveness = HEARTBEAT_LIVENESS;
     self->interval = INTERVAL_INIT;
-
     //  Send out heartbeats at regular intervals
     self->heartbeat_at = zclock_time () + HEARTBEAT_INTERVAL;
-
-    srandom ((unsigned) time (NULL));
-    // Send ready signal to frontend to announce itself
-    json_error_t error;
-    json_t *module_ready = json_load_file("line_ready.json", JSON_REJECT_DUPLICATES, &error);
-    if(!module_ready) {
-        printf("[%s] error parsing JSON string! line %d: %s\n", self->name, error.line, error.text);
-        return 0;
-    }
-    if(!json_is_array(module_ready)) {
-        printf("[%s] error: root is not an array\n", self->name);
-        json_decref(module_ready);
-        return 0;
-    }
-    char* json_string = json_dumps(module_ready,JSON_ENSURE_ASCII);
+    // Send heartbeart to frontend to announce itself
+    char* json_string = generate_json_heartbeat(self->name);
     zframe_t *frame = zframe_new (json_string, strlen(json_string));
     zframe_send(&frame, self->frontend, 0);
     printf("done.\n");
     return 0;
 }
 
-/*! \brief Computation function for LCSM running state of the Line Role.
-    This function contains the running loop of the Line Role. It has the logic of the stop-light
-    controller, which is switched depending on backend and/or frontend events.
+/*! \brief Computation function for LCSM running state of the Proxy.
+    This function contains the running loop of the Proxy.
     \param self pointer to resource_t data structure. 
  */
 int running(resource_t *self) {
     printf("[%s] RUNNING\n", self->name);
     
-    // Send stoplight commands
-    backend_resource_t *backend_resource = (backend_resource_t *) zlist_first (self->backend_resources);
-	while (backend_resource) {
-		zframe_send (&backend_resource->identity, self->backend, ZFRAME_REUSE + ZFRAME_MORE);
-		int light = rand() % 3;
-		/*zframe_t *frame = zframe_new(PNP_GREEN, FRM_LEN);
-		if(light == 1) 
-		    frame = zframe_new (PNP_ORANGE, FRM_LEN);
-		if(light == 2)
-		    frame = zframe_new (PNP_RED, FRM_LEN);
-		zframe_send (&frame, self->backend, 0);
-		*/
-printf("[%s] TX %i BACKEND %s\n", self->name, light, backend_resource->id_string);
-		backend_resource = (backend_resource_t *) zlist_next (self->backend_resources);
-	}
     
     return 0;
 }
 
-/*! \brief Computation function for LCSM pausing state of the Line Role.
-    This function should contain all activity that has to be executed when the Line
-    is in a pausing state.
+/*! \brief Computation function for LCSM pausing state of the Proxy.
+    This function should contain all activity that has to be executed when the Proxy is in a pausing state.
     \param self pointer to resource_t data structure. 
  */
 int pausing(resource_t *self) {
@@ -150,8 +114,8 @@ int pausing(resource_t *self) {
     return 0;
 }
 
-/*! \brief Computation function for LCSM deleting state of the Line Role.
-    This function cleans up all allocated data structures for the LCSM of the Line Role.
+/*! \brief Computation function for LCSM deleting state of the Proxy.
+    This function cleans up all allocated data structures for the LCSM of the Proxy.
     \param self pointer to resource_t data structure. 
  */
 int deleting(resource_t *self) {
@@ -183,12 +147,6 @@ char* parse_userinput(resource_t *self) {
         return "e_quit";
     } else if (streq (self->userinput, "step")) {
 	return "e_step";
-    } else if (streq (self->userinput, "G")) {
-	return "e_green";
-    } else if (streq (self->userinput, "O")) {
-	return "e_orange";
-    } else if (streq (self->userinput, "R")) {
-	return "e_red";
     } else {
         //printf("[%s] added event: %s\n", self->name, message);
     }
@@ -295,7 +253,7 @@ void communication(resource_t *self) {
 	    printf("[%s] new event: %s\n", self->name, self->userinput);
   	    zmsg_destroy (&msg);
         }	
-	/* 2.2 Input received from frontend? E.g. plant. */
+	/* 2.2 Input received from frontend? I.e. remote peer. */
 	if (which == self->frontend) {
             zmsg_t *msg = zmsg_recv (which);
 	    if (!msg) {
@@ -309,7 +267,7 @@ void communication(resource_t *self) {
 	    self->liveness = HEARTBEAT_LIVENESS;
   	    zmsg_destroy (&msg);
 	}
-	/* 2.3 Input received from backend? E.g module. */
+	/* 2.3 Input received from backend? I.e. local worker. */
 	if (which == self->backend) {
             zmsg_t *msg = zmsg_recv (which);
 	    if (!msg) {
@@ -322,7 +280,7 @@ void communication(resource_t *self) {
 	    self->input = zmsg_popstr(msg);
             decode_json(self);
   	    
-	    /* Iterate over input events and check for READY adn HEARTBEAT events */
+	    /* Iterate over input events and check HEARTBEAT events */
   	    event_t *e = (event_t *) zlist_first (self->input_events);
   	    char* name = NULL;
 	    while (e) {
@@ -332,11 +290,6 @@ void communication(resource_t *self) {
 		    zlist_remove(self->input_events, e);
  	    	    name = e->model_id;
 	    	}
-                if(streq(e->event_id, PNP_READY)) {
-		    printf("[%s] BE RX READY EVENT FROM %s\n", self->name, e->model_id);
-		    zlist_remove(self->input_events, e);
-		    name = e->model_id;
-		}
      	        e = (event_t *) zlist_next (self->input_events);
    	    }
 	    if(name != NULL) {
@@ -346,24 +299,9 @@ void communication(resource_t *self) {
 	    /* We don't need the message anymore */
 	    zmsg_destroy (&msg);
 	}
-	
-        //else  
-	//  If the queue hasn't sent us heartbeats in a while, destroy the
-	//  socket and reconnect. This is the simplest most brutal way of
-	//  discarding any messages we might have sent in the meantime:
-	//if (--self->liveness == 0) {
-	//	printf ("[%s] FE heartbeat failure, can't reach frontend\n", self->name);
-	//	printf ("[%s] FE reconnecting in %zd msec...\n", self->name, self->interval);
-	//	zclock_sleep (self->interval);
-
-	//	if (self->interval < INTERVAL_MAX)
-	//		self->interval *= 2;
-	//	zsock_destroy(&self->frontend);
-	//	self->frontend = zsock_new_dealer(self->frontend_str); // TODO: this should be configured.
-	//			self->liveness = HEARTBEAT_LIVENESS;
-	//}
           
 	/* 3. Process output */
+        // ...
         /* 4. Send heartbeats if required */
 	if (zclock_time () >= self->heartbeat_at) {
             char* hb = generate_json_heartbeat(self->name);
@@ -432,12 +370,6 @@ void scheduling(resource_t *self) {
 	running(self);
     if(streq(str,"deleting"))
 	deleting(self);
-//    if(streq(str,"red"))
-//	red(self);
-//    if(streq(str,"green"))
-//	green(self);
-//    if(streq(str,"orange"))
-//	orange(self);
 }
 
 /*! \brief Logging function, which is part of the running loop.
@@ -450,7 +382,7 @@ void logging(resource_t *self) {
     This function contains the running loop of this process:
     
     [COMMUNICATION] 	check communication channels and parse any messages into events.
-    [COORDINATION] 	push events to the role's LCSM and step the FSM and 
+    [COORDINATION] 	push events to the LCSM and step the FSM and 
    			check if stepping the FSM resulted in any state transition.
     [CONFIGURATION]	reconfigure if necessary based on state events from FSM.
     [SCHEDULING]	schedule any computations required by state transition, execute 
@@ -468,11 +400,11 @@ static void resource_actor(zsock_t *pipe, void *args){
     self->name = name;
     self->pipe = pipe;
     self->com = NULL;
-    self->frontend_str = (char*)argv[3];
-    self->backend_str = (char*)argv[4];
+    //self->frontend_str = (char*)argv[3];
+    //self->backend_str = (char*)argv[4];
     self->input_events = zlist_new();
     self->output_events = zlist_new();
-    printf("[%s] actor started for with frontend %s and backend %s\n", name, self->frontend_str, self->backend_str);
+    //printf("[%s] actor started for with frontend %s and backend %s\n", name, self->frontend_str, self->backend_str);
     // end creating state of LCSM
 
     // Running loop of this process:
@@ -516,10 +448,6 @@ static void resource_actor(zsock_t *pipe, void *args){
 
 
 /*! \brief Main function is entry point to resource process.
-    Usage: ./line myname myfsm
-    \param myname give this process a name
-    \param myfsm provide a lua file containing the LCSM model for this process
-
     Its purpose is to:
     1. launch an actor thread running the application
     2. monitor keyboard input and send it to the resource actor
@@ -529,7 +457,7 @@ int main(int argc, char *argv[])
 {
     /* Usage */
     if (argc < 6) {
-        puts ("syntax: ./line myfsm myname frontend_port backend_port proto_port");
+        puts ("syntax: ./proxy myfsm myname beacon_port proto_port");
         exit (0);
     }
     // Create Lua state variable for the rFSM
@@ -541,7 +469,7 @@ int main(int argc, char *argv[])
     char *proto_port;
     fsm = argv[1];
     name = argv[2];
-    proto_port = argv[5];
+    proto_port = argv[4];
     
     lua_pushstring(L, fsm);
     lua_setglobal(L, "fsm_uri");
@@ -555,18 +483,8 @@ int main(int argc, char *argv[])
     	goto out;
     }
     lua_pcall(L,0,0,0);
-  
-  /*  if(load_library(L, "rfsm")!=0) {
-    	printf("[%s] error loading rfsm library, aborting...\n", argv[2]);
-     	goto out;
-    }
-  
-    if(rfsm_init_fsm(L, fsm)!=0) {
-    	printf("[%s] error initializing fsm\n", argv[2]);
-    	goto out;
-    }
     // successfully opened LCSM lua file
-*/
+    
     // start actor thread to execute running loop of this process
     // the main thread will be used to receive keyboard input in parallel
     zactor_t *actor = zactor_new (resource_actor, argv);

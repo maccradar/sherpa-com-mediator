@@ -128,7 +128,3 @@ gcc -ggdb proxy.c -I/usr/include/lua5.1 -lczmq -lzmq -lrfsmbinding -o proxy
 
 You can now trigger the state machine by entering events using the keyboard. Which events result in a transition can be seen in the figure below or in lcsm-uml.png.
 ![LCSM model](lcsm-uml.png)
-
-```sh
-
-```

@@ -1,54 +1,14 @@
-#ifndef PNP_DEFS
-#define PNP_DEFS "Pick-n-Pack Definitions"
+#ifndef SHERPA_DEFS
+#define SHERPA_DEFS "SHERPA Definitions"
 
-//  Pick-n-Pack Protocol constants for signalling
-#define PNP_READY "READY"    //  Signals device is ready
-#define PNP_HEARTBEAT "HEARTBEAT"      //  Signals device heartbeat
-#define PNP_PPP "PPP"
-
-// IDs
-#define PNP_LINE_ID "010"
-#define PNP_THERMOFORMER_ID "011"
-#define PNP_ROBOT_CELL_ID "012"
-#define PNP_QAS_ID "013"
-#define PNP_CEILING_ID "014"
-#define PNP_PRINTING_ID "015"
-
-// Names
-#define PNP_LINE "Line"
-#define PNP_THERMOFORMER "Thermoformer"
-#define PNP_ROBOT_CELL "Robot Cell"
-#define PNP_QAS "QAS"
-#define PNP_CEILING "Ceiling"
-#define PNP_PRINTING "Printing"
-
-// Status
-#define PNP_CREATING "100"
-#define PNP_INITIALISING "101"
-#define PNP_CONFIGURING "102"
-#define PNP_RUNNING "103"
-#define PNP_PAUSING "104"
-#define PNP_FINALISING "105"
-#define PNP_DELETING "106"
-
-// Signals/commands
-#define PNP_RUN "110"
-#define PNP_PAUSE "111"
-#define PNP_CONFIGURE "112"
-#define PNP_STOP "113"
-#define PNP_REBOOT "114"
-#define PNP_GREEN "115"
-#define PNP_ORANGE "116"
-#define PNP_RED "117"
+// SHERPA Protocol constants for signalling
+#define SHERPA_HEARTBEAT "HEARTBEAT"      //  Signals device heartbeat
 
 // Resource definitions
 #define HEARTBEAT_LIVENESS  3       //  3-5 is reasonable
 #define HEARTBEAT_INTERVAL  1000    //  msecs
 #define INTERVAL_INIT       1000    //  Initial reconnect
 #define INTERVAL_MAX       32000    //  After exponential backoff
-
-#define STACK_MAX 5 // maximum size of transition stack, e.g. running->configuring->initialising->finalising->pausing when configuring cannot proceed without reinit
-#define PAYLOAD_MAX 10 // maximum number of payload items in a single transition. E.g. change 10 configuration parameters.
 
 // Dependencies
 #include "czmq.h"
@@ -88,6 +48,10 @@ static char* generate_json(event_t* e) {
   return ret_strings;
 }
 
+static char* generate_json_ready(char* name) {
+
+}
+
 static char* generate_json_heartbeat(char* name) {
   char *ret_strings = NULL;
   time_t rawtime;
@@ -101,9 +65,9 @@ static char* generate_json_heartbeat(char* name) {
   json_t *event_data = json_object();
   json_object_set_new( event, "timestamp", json_string(timestamp));
   json_object_set_new( event, "event", event_data);
-  json_object_set_new( event_data, "metamodel_id", json_string(PNP_PPP));
+  json_object_set_new( event_data, "metamodel_id", json_string(SHERPA_PPP));
   json_object_set_new( event_data, "model_id", json_string(name));
-  json_object_set_new( event_data, "event_id", json_string(PNP_HEARTBEAT));
+  json_object_set_new( event_data, "event_id", json_string(SHERPA_HEARTBEAT));
   json_array_append( root, event );
   
   ret_strings = json_dumps( root, 0 );
@@ -188,12 +152,12 @@ s_backend_resources_purge (zlist_t *backend_resources)
 
 typedef struct {
     char *name;
-    char *frontend_str; // string representation of frontend socket. e.g. tcp://localhost:9001
-    char *backend_str; // string representation of backed socket. e.g. tcp://*:9002
-    zsock_t *frontend; // socket to frontend process, e.g. backend_resource
+    char *frontend_str; // frontend endpoint. e.g. tcp://localhost:9001
+    char *backend_str; // backend endpoint. e.g. tcp://*:9002
+    zsock_t *frontend; // frontend socket to remote peers
     bool frontend_connected; // keep track of frontend
-    zsock_t *backend; // socket to potential backend processes, e.g. subdevices
-    zsock_t *pipe; // socket to main loop
+    zsock_t *backend; // backend socket to local workers
+    zsock_t *pipe; // main loop socket
     zpoller_t *com; // poller to check communication channels
     zlist_t *input_events; // list of input events
     zlist_t *output_events; // list of output events
