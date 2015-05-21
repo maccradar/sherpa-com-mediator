@@ -3,7 +3,7 @@
 
 // SHERPA Protocol constants for signalling
 #define SHERPA_HEARTBEAT "HEARTBEAT"      //  Signals device heartbeat
-
+#define SHERPA_PROXY "PROXY"
 // Resource definitions
 #define HEARTBEAT_LIVENESS  3       //  3-5 is reasonable
 #define HEARTBEAT_INTERVAL  1000    //  msecs
@@ -65,7 +65,7 @@ static char* generate_json_heartbeat(char* name) {
   json_t *event_data = json_object();
   json_object_set_new( event, "timestamp", json_string(timestamp));
   json_object_set_new( event, "event", event_data);
-  json_object_set_new( event_data, "metamodel_id", json_string(SHERPA_PPP));
+  json_object_set_new( event_data, "metamodel_id", json_string(SHERPA_PROXY));
   json_object_set_new( event_data, "model_id", json_string(name));
   json_object_set_new( event_data, "event_id", json_string(SHERPA_HEARTBEAT));
   json_array_append( root, event );

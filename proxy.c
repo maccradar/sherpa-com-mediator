@@ -285,7 +285,7 @@ void communication(resource_t *self) {
   	    char* name = NULL;
 	    while (e) {
          	printf("[%s] checking event %s\n", self->name, e->event_id);
-		if(streq(e->event_id, PNP_HEARTBEAT)) {
+		if(streq(e->event_id, SHERPA_HEARTBEAT)) {
 		    printf("[%s] BE RX HB event FROM %s\n", self->name, e->model_id);
 		    zlist_remove(self->input_events, e);
  	    	    name = e->model_id;
