@@ -126,5 +126,49 @@ gcc -ggdb proxy.c -I/usr/include/lua5.1 -lczmq -lzmq -lrfsmbinding -o proxy
 ~/sherpa-proxy/$ ./proxy.sh donkey
 ```
 
-You can now trigger the state machine by entering events using the keyboard. Which events result in a transition can be seen in the figure below or in lcsm-uml.png.
-![LCSM model](lcsm-uml.png)
+You can now trigger the state machine by entering events using the keyboard. Which events result in a transition can be found in lcsm.json, shown below.
+
+```json
+{
+  "type":"rfsm_model",
+  "version":2,
+  "rfsm": {
+    "type" : "state",
+    "transitions" : [
+      { "tgt": "inactive", "src": "initial", "events": [] },
+      { "tgt": "inactive", "src": "active", "events": ["e_deactivate"] },
+      { "tgt": "active", "src": "inactive", "events": ["e_activate"] }
+    ],
+    "containers" : [
+      { "id": "inactive", 
+         "type": "state",
+         "transitions": [
+          { "tgt": "creating", "src": "initial", "events": [] },
+          { "tgt": "configuring_resources", "src":"creating", "events": [ "e_done" ] },
+          { "tgt": "deleting", "src":"initial", "events": ["e_deactivate"] }
+         ],
+         "containers": [
+           { "id": "creating", "type": "state" , "entry": "creating"},
+           { "id": "configuring_resources", "type": "state", "entry": "configuring_resources" },
+           { "id": "deleting", "type": "state", "entry": "deleting" }
+         ]
+      },
+      { "id": "active", 
+        "type": "state",
+        "transitions" : [
+          { "tgt": "configuring_capabilities", "src": "initial", "events": [] },
+          { "tgt": "pausing", "src":"configuring_capabilities", "events": [ "e_done" ] },
+          { "tgt": "running", "src":"pausing", "events": ["e_run"] },
+          { "tgt": "pausing", "src":"running", "events": ["e_pause"] },
+          { "tgt": "configuring_capabilities", "src":"pausing", "events": ["e_configure"] }
+        ],
+        "containers" :  [
+           { "id": "configuring_capabilities", "type": "state", "entry": "configuring_capabilities" },
+           { "id": "running", "type": "state", "entry": "running" },
+           { "id": "pausing", "type": "state", "entry": "pausing" }
+        ]
+      }
+    ]
+  }
+}
+```

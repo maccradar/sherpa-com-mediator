@@ -29,7 +29,7 @@
           { "tgt": "pausing", "src":"configuring_capabilities", "events": [ "e_done" ] },
           { "tgt": "running", "src":"pausing", "events": ["e_run"] },
           { "tgt": "pausing", "src":"running", "events": ["e_pause"] },
-          { "tgt": "configuring_capabilities", "src":"pausing", "events": ["e_configure"] },
+          { "tgt": "configuring_capabilities", "src":"pausing", "events": ["e_configure"] }
         ],
         "containers" :  [
            { "id": "configuring_capabilities", "type": "state", "entry": "configuring_capabilities" },
