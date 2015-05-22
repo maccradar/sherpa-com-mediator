@@ -167,7 +167,6 @@ typedef struct {
     size_t interval; // interval defines at what interval heartbeats are sent
     uint64_t heartbeat_at; // heartbeat_at defines when to send next heartbeat
     zlist_t *backend_resources;
-    zlist_t *required_resources;
     bool configured_resources;
     bool deleted;
 } resource_t;

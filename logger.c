@@ -117,60 +117,33 @@ zstr_sendx (qosmon, "LISTEN", "ALL", NULL);
 zstr_sendx (qosmon, "START", NULL);
 zsock_wait (qosmon);
 
-zactor_t *node1 = zactor_new (zbeacon, NULL);
+zactor_t *node = zactor_new (zbeacon, NULL);
 assert (node1);
-zsock_send (node1, "si", "CONFIGURE", 5670);
+zsock_send (node, "si", "CONFIGURE", 5670);
 char* hostname = zstr_recv (node1);
 assert (*hostname);
 int port = zsock_bind (inbox, "tcp://%s:*", hostname);
-printf("Node 1: listening on %s:%i\n", hostname, port);
+printf("Node: listening on %s:%i\n", hostname, port);
 free (hostname);
 
-beacon_t beacon1;
-beacon1.protocol [0] = 'S';
-beacon1.protocol [1] = 'H';
-beacon1.protocol [2] = 'E';
-beacon1.protocol [3] = 'R';
-beacon1.protocol [4] = 'P';
-beacon1.protocol [5] = 'A';
-beacon1.version = BEACON_VERSION;
-beacon1.port = htons (port);
-zuuid_t *uuid1 = zuuid_new();
-zuuid_export (uuid1, beacon1.uuid);
+beacon_t beacon;
+beacon.protocol [0] = 'S';
+beacon.protocol [1] = 'H';
+beacon.protocol [2] = 'E';
+beacon.protocol [3] = 'R';
+beacon.protocol [4] = 'P';
+beacon.protocol [5] = 'A';
+beacon.version = BEACON_VERSION;
+beacon.port = htons (port);
+zuuid_t *uuid = zuuid_new();
+zuuid_export (uuid, beacon.uuid);
 
+zsock_send (node, "sbi", "PUBLISH", (byte *) &beacon, sizeof(beacon_t), 1000);
+printf("Node: publishing sherpa beacon\n");
+zsock_send (node, "sb", "SUBSCRIBE", "SHERPA", 6);
+printf("Node: filtering on SHERPA beacons\n");
 
-zactor_t *node2 = zactor_new (zbeacon, NULL);
-assert (node2);
-zsock_send (node2, "si", "CONFIGURE", 5670);
-hostname = zstr_recv (node2);
-printf("Node 2: hostname %s\n", hostname);
-assert (*hostname);
-free (hostname);
-
-zactor_t *node3 = zactor_new (zbeacon, NULL);
-assert (node3);
-zsock_send (node3, "si", "CONFIGURE", 5670);
-hostname = zstr_recv (node3);
-printf("Node 3: hostname %s\n", hostname);
-assert (*hostname);
-free (hostname);
-
-zsock_send (node1, "sbi", "PUBLISH", (byte *) &beacon1, sizeof(beacon_t), 1000);
-printf("Node 1: publishing sherpa beacon\n");
-zsock_send (node2, "sbi", "PUBLISH", hb, strlen(hb), 1000);
-printf("Node 2: publishing json heartbeat\n");
-zsock_send (node3, "sbi", "PUBLISH", "NODE/3", 6, 500);
-printf("Node 3: publishing string\n");
-zsock_send (node1, "sb", "SUBSCRIBE", "NODE", 4);
-printf("Node 1: filtering on NODE beacons\n");
-zsock_send (node2, "sb", "SUBSCRIBE", "SHERPA", 6);
-printf("Node 2: filtering on SHERPA beacons\n");
-zsock_send (node3, "sb", "SUBSCRIBE", "", 0);
-printf("Node 3: no filtering\n");
-
-
-//  Poll on three API sockets at once
-zpoller_t *poller = zpoller_new (node1, node2, node3, inbox, NULL);
+zpoller_t *poller = zpoller_new (node, inbox, NULL);
 assert (poller);
 int64_t stop_at = zclock_mono () + 5000;
 while (zclock_mono () < stop_at) {
@@ -179,21 +152,12 @@ while (zclock_mono () < stop_at) {
         timeout = 0;
     void *which = zpoller_wait (poller, timeout * ZMQ_POLL_MSEC);
     if (which) {
-	int i = 0;
-	if(which == node1) {
-		i = 1;
-        	char *ipaddress, *received;
-        	zstr_recvx (which, &ipaddress, &received, NULL);
-        	printf("Node %i: received from ip %s: %s\n", i, ipaddress, received);
-		zstr_free (&ipaddress);
-        	zstr_free (&received);
-	} else if(which == node2) {
-		i = 2;
+	if(which == node) {
         	char *ipaddress = zstr_recv (which);
-        	printf("Node %i: received from ip %s\n", i, ipaddress);
+        	printf("Node: received from ip %s\n", ipaddress);
     		zframe_t *frame = zframe_recv (which);
     		if (ipaddress == NULL) {
-        		printf("Node %i: got interrupted\n", i);                 //  Interrupted
+        		printf("Node: got interrupted\n");                 //  Interrupted
 			break;
 		}
     		//  Ignore anything that isn't a valid beacon
@@ -202,7 +166,7 @@ while (zclock_mono () < stop_at) {
         		memcpy (&beacon, zframe_data (frame), zframe_size (frame));
     		zframe_destroy (&frame);
     		if (beacon.version != BEACON_VERSION) {
-        		printf("Node %i: Invalid beacon version\n", i);                 //  Garbage beacon, ignore it
+        		printf("Node: Invalid beacon version\n");                 //  Garbage beacon, ignore it
 			break;
 		}
     		zuuid_t *uuid = zuuid_new ();
@@ -210,19 +174,12 @@ while (zclock_mono () < stop_at) {
     		if (beacon.port) {
         		char endpoint [30];
         		sprintf (endpoint, "tcp://%s:%d", ipaddress, ntohs (beacon.port));
-    			printf("Node %i: received beacon from ip %s which offers endpoint %s\n", i, ipaddress, endpoint);
-			zsock_t *worker = zsock_new_req(endpoint);
-			zstr_send(worker, "HELLO!");			
+    			printf("Node: received beacon from ip %s which offers endpoint %s\n", ipaddress, endpoint);
+			zsock_t *peer = zsock_new_dealer(endpoint);
+			zstr_send(peer, "{'logger','tcp://'}");
 		}
     		zuuid_destroy (&uuid);
 		zstr_free (&ipaddress);
-	} else if(which == node3) {
-		i = 3;
-        	char *ipaddress, *received;
-        	zstr_recvx (which, &ipaddress, &received, NULL);
-        	printf("Node %i: received from ip %s: %s\n", i, ipaddress, received);
-		zstr_free (&ipaddress);
-        	zstr_free (&received);
 	} else if(which == inbox) {
 		zmsg_t *msg = zmsg_recv(which);
 		zmsg_print(msg);
@@ -237,14 +194,9 @@ zstr_sendx (node1, "UNSUBSCRIBE", NULL);
 
 //  Stop all node broadcasts
 zstr_sendx (node1, "SILENCE", NULL);
-zstr_sendx (node2, "SILENCE", NULL);
-zstr_sendx (node3, "SILENCE", NULL);
 
 //  Destroy the test nodes
-zactor_destroy (&node1);
-zactor_destroy (&node2);
-zactor_destroy (&node3);
-
+zactor_destroy (&node);
 
  //struct timespec tstart={0,0}, tend={0,0};
  //   clock_gettime(CLOCK_MONOTONIC, &tstart);
@@ -252,31 +204,5 @@ zactor_destroy (&node3);
  //   printf("some_long_computation took about %.5f seconds\n",
  //          ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - 
  //          ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
-
-//zsock_t *socket = zsock_new (ZMQ_DEALER);
-//assert (socket);
-
-//zsock_bind (socket, "tcp://*:9000");
-
-/*zpoller_t* poller =  zpoller_new (socket, qosmon, NULL);
-while(true) {
-	void *which = zpoller_wait (poller, 0);
-	if (which == socket) {
-            zmsg_t *msg = zmsg_recv (which);
-	    char *str = zmsg_popstr(msg);
-	    
-	    free(str);
-            zmsg_destroy(&msg);
-        }
-	if (which == qosmon) {
-	    zmsg_t *msg = zmsg_recv(qosmon);
-	    char *event = zmsg_popstr(msg);
-            printf("Server monitor: %s\n", event);
- 	    free(event);
-	    zmsg_destroy(&msg);
-	}
-
-}
-*/
 return 0;
 }
