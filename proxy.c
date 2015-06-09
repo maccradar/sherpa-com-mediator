@@ -37,15 +37,12 @@
  */
 int creating(resource_t *self) {
     printf("[%s] creating...", self->name);
-    self->frontend =  NULL;
-    self->backend =  NULL;
-    self->backend_resources = zlist_new();
+    self->node =  NULL;
     self->com =  NULL;
     self->input = NULL;
     self->userinput = NULL;
     self->configured_resources = false;
     self->deleted = false;
-    self->frontend_connected = false;
     printf("...done.\n");
 
     return 0;
@@ -62,11 +59,9 @@ int configuring_resources(resource_t* self) {
     printf("[%s] configuring resources...", self->name);
     // send signal on pipe socket to acknowledge initialization
     zsock_signal (self->pipe, 0);
-    
-    // configuring frontend and backend sockets
-    self->frontend = zsock_new_dealer(self->frontend_str);
-    self->backend =  zsock_new_router (self->backend_str);
-    self->com =  zpoller_new (self->pipe, self->frontend, self->backend, NULL);
+    self->node = zyre_new(self->name);
+    zyre_set_verbose(self->node);    
+    self->com =  zpoller_new (self->pipe, zyre_socket(self->node), NULL);
     self->configured_resources = true;
     printf("done.\n");
 
@@ -80,16 +75,8 @@ int configuring_resources(resource_t* self) {
  */
 int configuring_capabilities (resource_t* self) {
     printf("[%s] configuring capabilities...", self->name);
-    //  If liveness hits zero, queue is considered disconnected
-    self->liveness = HEARTBEAT_LIVENESS;
-    self->interval = INTERVAL_INIT;
-    //  Send out heartbeats at regular intervals
-    self->heartbeat_at = zclock_time () + HEARTBEAT_INTERVAL;
-    // Send heartbeart to frontend to announce itself
-    char* json_string = generate_json_heartbeat(self->name);
-    zframe_t *frame = zframe_new (json_string, strlen(json_string));
-    zframe_send(&frame, self->frontend, 0);
-    printf("done.\n");
+    zyre_start(self->node);   
+    zyre_join(self->node, SHERPA);   
     return 0;
 }
 
@@ -98,9 +85,7 @@ int configuring_capabilities (resource_t* self) {
     \param self pointer to resource_t data structure. 
  */
 int running(resource_t *self) {
-    printf("[%s] RUNNING\n", self->name);
-    
-    
+    printf("[%s] running...\n", self->name);
     return 0;
 }
 
@@ -123,15 +108,11 @@ int deleting(resource_t *self) {
 	return 0;
     printf("[%s] deleting...", self->name);
     //  When we're done, clean up properly
-    while (zlist_size (self->backend_resources)) {
-    	backend_resource_t *backend_resource = (backend_resource_t *) zlist_pop (self->backend_resources);
-        s_backend_resource_destroy (&backend_resource);
-    }
-    zsock_destroy(&self->frontend);
-    zsock_destroy(&self->backend);
     zpoller_destroy (&self->com);
-    self->frontend = NULL;
-    self->backend = NULL;
+    zyre_stop(self->node);
+    zclock_sleep(100);
+    zyre_destroy(&self->node);
+    
     self->deleted = true;
     printf("done.\n");
     return 0;
@@ -238,7 +219,7 @@ void communication(resource_t *self) {
 	}
 	
 	/* 2. Process input */ 
-	void *which = zpoller_wait (self->com, HEARTBEAT_INTERVAL * ZMQ_POLL_MSEC);
+	void *which = zpoller_wait (self->com, -1);
 	
         /* 2.1 Input received from main loop? E.g. keyboard input. */
 	if (which == self->pipe) {
@@ -247,80 +228,55 @@ void communication(resource_t *self) {
 	        printf("[%s] interrupted!\n", self->name); 
 	        return;
             }
-            self->userinput = zmsg_popstr (msg);
-            printf("[%s] received keyboard input: %s\n", self->name, self->userinput);
-	    self->userinput = parse_userinput(self);
-	    printf("[%s] new event: %s\n", self->name, self->userinput);
+            char *command = zmsg_popstr (msg);
+            if (streq (command, "$TERM")) {
+                self->userinput = command;
+	        self->userinput = parse_userinput(self);
+	        printf("[%s] new event: %s\n", self->name, self->userinput);
+            } else if (streq (command, "SHOUT")) { 
+                char *string = zmsg_popstr (msg);
+                zyre_shouts (self->node, SHERPA, "%s", string);
+            } else if (streq (command, "EVENT")) {
+	    	char *string = zmsg_popstr (msg);
+		self->userinput = string;
+		self->userinput = parse_userinput(self);
+	        printf("[%s] new event: %s\n", self->name, self->userinput);
+            } else {
+                printf ("[%s] invalid message from keyboard\n", self->name);
+                assert (false);
+            }
+            free (command);
+            zmsg_destroy (&msg);
   	    zmsg_destroy (&msg);
         }	
-	/* 2.2 Input received from frontend? I.e. remote peer. */
-	if (which == self->frontend) {
+        else if (which == zyre_socket (self->node)) {
             zmsg_t *msg = zmsg_recv (which);
-	    if (!msg) {
-	        printf("[%s] interrupted!\n", self->name); 
-	        return;
+            char *event = zmsg_popstr (msg);
+            char *peer = zmsg_popstr (msg);
+            char *name = zmsg_popstr (msg);
+            char *group = zmsg_popstr (msg);
+            char *message = zmsg_popstr (msg);
+
+            if (streq (event, "ENTER")) { 
+                printf ("%s has joined.\n", name);
             }
-	    printf("[%s] received frontend input\n", self->name);	    
-            /* 2.b Pop that single frame of the message into a fresh string and validate it's JSON */
-	    self->input = zmsg_popstr(msg);
-            decode_json(self);
-	    self->liveness = HEARTBEAT_LIVENESS;
-  	    zmsg_destroy (&msg);
-	}
-	/* 2.3 Input received from backend? I.e. local worker. */
-	if (which == self->backend) {
-            zmsg_t *msg = zmsg_recv (which);
-	    if (!msg) {
-	        printf("[%s] interrupted!\n", self->name); 
-	        return;
+            else if (streq (event, "EXIT")) { 
+                printf ("%s has left.\n", name);
             }
-	    printf("[%s] received backend input\n", self->name);	    
-	    //  Any sign of life from backend_resource means it's ready
-            zframe_t *identity = zmsg_unwrap (msg);
-	    self->input = zmsg_popstr(msg);
-            decode_json(self);
-  	    
-	    /* Iterate over input events and check HEARTBEAT events */
-  	    event_t *e = (event_t *) zlist_first (self->input_events);
-  	    char* name = NULL;
-	    while (e) {
-         	printf("[%s] checking event %s\n", self->name, e->event_id);
-		if(streq(e->event_id, SHERPA_HEARTBEAT)) {
-		    printf("[%s] BE RX HB event FROM %s\n", self->name, e->model_id);
-		    zlist_remove(self->input_events, e);
- 	    	    name = e->model_id;
-	    	}
-     	        e = (event_t *) zlist_next (self->input_events);
-   	    }
-	    if(name != NULL) {
-	    	backend_resource_t *backend_resource = s_backend_resource_new (identity, name);
-	    	s_backend_resource_ready (backend_resource, self->backend_resources);
-  	    }
-	    /* We don't need the message anymore */
-	    zmsg_destroy (&msg);
-	}
-          
-	/* 3. Process output */
-        // ...
-        /* 4. Send heartbeats if required */
-	if (zclock_time () >= self->heartbeat_at) {
-            char* hb = generate_json_heartbeat(self->name);
-            zframe_t *frame = zframe_new (hb, strlen(hb));
-            backend_resource_t *backend_resource = (backend_resource_t *) zlist_first (self->backend_resources);
-	    while (backend_resource) {
-		zframe_send (&backend_resource->identity, self->backend, ZFRAME_REUSE + ZFRAME_MORE);
-                zframe_send (&frame, self->backend, 0);
-		printf("[%s] BE TX HB %s:%s\n", self->name, backend_resource->id_string, hb);
-		backend_resource = (backend_resource_t *) zlist_next (self->backend_resources);
+            else if (streq (event, "SHOUT")) { 
+                printf ("%s: %s\n", name, message);
+            }
+	    else {
+            	printf ("Message from node\n");
+            	printf ("event: %s peer: %s  name: %s\n  group: %s message: %s\n", event, peer, name, group, message);
 	    }
-		
-	s_backend_resources_purge (self->backend_resources);
-	    
-            // Send heartbeat to frontend
-	    zframe_send(&frame, self->frontend, 0);
-            printf("[%s] FE TX HB: %s \n", self->name, hb);
-	    self->heartbeat_at = zclock_time () + HEARTBEAT_INTERVAL;
-	}
+            free (event);
+            free (peer);
+            free (name);
+            free (group);
+            free (message);
+            zmsg_destroy (&msg);
+        }
 }
 
 /*! \brief Coordination function, which is part of the running loop.
@@ -404,11 +360,8 @@ static void resource_actor(zsock_t *pipe, void *args){
     self->name = name;
     self->pipe = pipe;
     self->com = NULL;
-    self->frontend_str = (char*)argv[3];
-    self->backend_str = (char*)argv[4];
     self->input_events = zlist_new();
     self->output_events = zlist_new();
-    //printf("[%s] actor started for with frontend %s and backend %s\n", name, self->frontend_str, self->backend_str);
     // end creating state of LCSM
 
     // Running loop of this process:
@@ -460,8 +413,8 @@ static void resource_actor(zsock_t *pipe, void *args){
 int main(int argc, char *argv[])
 {
     /* Usage */
-    if (argc < 6) {
-        puts ("syntax: ./proxy myfsm myname frontend backend proto_port");
+    if (argc < 4) {
+        puts ("syntax: ./proxy myfsm myname proto_port");
         exit (0);
     }
     // Create Lua state variable for the rFSM
