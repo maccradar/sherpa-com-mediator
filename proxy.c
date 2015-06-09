@@ -376,6 +376,10 @@ void scheduling(resource_t *self) {
     [LOGGING]	 	log all data that has been changed in this step. Basically, this means logging the resource_t state.
  */
 void logging(resource_t *self) {
+    // If PUB socket is connected, send data to collector
+    //if(self->pub)
+    // Else send to stdout
+    printf("[%s] log state...\n",self->name);
 }
 
 /*! \brief The resource_actor thread triggers communication, coordination, configuration, scheduling and logging.
@@ -400,8 +404,8 @@ static void resource_actor(zsock_t *pipe, void *args){
     self->name = name;
     self->pipe = pipe;
     self->com = NULL;
-    //self->frontend_str = (char*)argv[3];
-    //self->backend_str = (char*)argv[4];
+    self->frontend_str = (char*)argv[3];
+    self->backend_str = (char*)argv[4];
     self->input_events = zlist_new();
     self->output_events = zlist_new();
     //printf("[%s] actor started for with frontend %s and backend %s\n", name, self->frontend_str, self->backend_str);
@@ -457,7 +461,7 @@ int main(int argc, char *argv[])
 {
     /* Usage */
     if (argc < 6) {
-        puts ("syntax: ./proxy myfsm myname beacon_port proto_port");
+        puts ("syntax: ./proxy myfsm myname frontend backend proto_port");
         exit (0);
     }
     // Create Lua state variable for the rFSM
