@@ -453,7 +453,10 @@ int main(int argc, char *argv[])
         if (!fgets( message, 1024, stdin))
 	        break;
 	message[strlen(message)-1] = 0; // drop the trailing linefeed
-	zstr_sendx (actor, message, NULL);
+	char * pch;
+  	char * command = strtok (message," ");
+	char * string = strtok (NULL, " ");
+	zstr_sendx (actor, command, string, NULL);
     }
     // System interrupt received. Close actor thread and LCSM
     printf("[%s] received interrupt, aborting...\n", argv[2]);
