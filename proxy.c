@@ -212,7 +212,6 @@ void decode_json(resource_t *self) {
     [COMMUNICATION]	push any events for external actors to the respective communication channels.
  */
 void communication(resource_t *self) {
-	printf("[%s] communication\n", self->name);
 	/* 1. Is communication ready? */
 	if(self->com == NULL) {
 		printf("[%s] no communication channels yet\n", self->name);
