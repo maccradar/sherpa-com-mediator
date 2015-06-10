@@ -1,5 +1,5 @@
 /*
- * This file is part of the SHERPA proxy implementation
+ * This file is part of the communication proxy implementation
  *
  * Copyright (c) 2015, Department of Mechanical Engineering, KU Leuven, Belgium.
  * All rights reserved.
@@ -60,7 +60,7 @@ int configuring_resources(resource_t* self) {
     // send signal on pipe socket to acknowledge initialization
     zsock_signal (self->pipe, 0);
     self->node = zyre_new(self->name);
-    zyre_set_verbose(self->node);    
+    //zyre_set_verbose(self->node);    
     self->com =  zpoller_new (self->pipe, zyre_socket(self->node), NULL);
     self->configured_resources = true;
     printf("done.\n");
@@ -76,7 +76,7 @@ int configuring_resources(resource_t* self) {
 int configuring_capabilities (resource_t* self) {
     printf("[%s] configuring capabilities...", self->name);
     zyre_start(self->node);   
-    zyre_join(self->node, SHERPA);   
+    zyre_join(self->node, self->group);   
     return 0;
 }
 
@@ -109,8 +109,8 @@ int deleting(resource_t *self) {
     printf("[%s] deleting...", self->name);
     //  When we're done, clean up properly
     zpoller_destroy (&self->com);
-    zyre_stop(self->node);
-    zclock_sleep(100);
+    //zyre_stop(self->node);
+    //zclock_sleep(100);
     zyre_destroy(&self->node);
     
     self->deleted = true;
@@ -212,6 +212,7 @@ void decode_json(resource_t *self) {
     [COMMUNICATION]	push any events for external actors to the respective communication channels.
  */
 void communication(resource_t *self) {
+	printf("[%s] communication\n", self->name);
 	/* 1. Is communication ready? */
 	if(self->com == NULL) {
 		printf("[%s] no communication channels yet\n", self->name);
@@ -219,7 +220,7 @@ void communication(resource_t *self) {
 	}
 	
 	/* 2. Process input */ 
-	void *which = zpoller_wait (self->com, -1);
+	void *which = zpoller_wait (self->com, ZMQ_POLL_MSEC);
 	
         /* 2.1 Input received from main loop? E.g. keyboard input. */
 	if (which == self->pipe) {
@@ -233,17 +234,54 @@ void communication(resource_t *self) {
                 self->userinput = command;
 	        self->userinput = parse_userinput(self);
 	        printf("[%s] new event: %s\n", self->name, self->userinput);
-            } else if (streq (command, "SHOUT")) { 
+            } else if (streq (command, "SHOUT")) {
+		char *group = zmsg_popstr (msg); 
                 char *string = zmsg_popstr (msg);
-                zyre_shouts (self->node, SHERPA, "%s", string);
+                zyre_shouts (self->node, group, "%s", string);
+            } else if (streq (command, "VERBOSE")) {
+                zyre_set_verbose(self->node);
+		printf("[%s] switch to verbose mode\n", self->name);
+            } else if (streq (command, "WHISPER")) {
+		char *peer = zmsg_popstr (msg); 
+                char *string = zmsg_popstr (msg);
+                zyre_whispers (self->node, peer, "%s", string);
             } else if (streq (command, "EVENT")) {
 	    	char *string = zmsg_popstr (msg);
 		self->userinput = string;
 		self->userinput = parse_userinput(self);
 	        printf("[%s] new event: %s\n", self->name, self->userinput);
-            } else {
+            } else if (streq (command, "UUID")) {
+		printf("[%s] my uuid is: %s\n", self->name, zyre_uuid(self->node));
+	    } else if (streq (command, "NAME")) {
+		printf("[%s] my name is: %s\n", self->name, zyre_name(self->node));
+	    } else if (streq (command, "JOIN")) {
+	        char *group = zmsg_popstr(msg);
+		zyre_join(self->node, group);
+         	printf("[%s] joined group: %s\n", self->name, group);
+	    } else if (streq (command, "LEAVE")) {
+	        char *group = zmsg_popstr(msg);
+		zyre_leave(self->node, group);
+         	printf("[%s] left group: %s\n", self->name, group);
+	    } else if (streq (command, "PEERS")) {
+		zlist_t *peers = zyre_peers(self->node);
+		printf("[%s] my peers are:\n", self->name);
+		char* peer = zlist_next(peers);
+		while(peer != NULL) {
+		    printf("[%s] %s\n", self->name, peer);
+		    peer = zlist_next(peers);
+		}
+		printf("[%s] end of peers\n", self->name);
+	    } else if (streq (command, "OWNGROUPS")) {
+		zlist_t *groups = zyre_own_groups(self->node);
+		printf("[%s] my own groups are:\n", self->name);
+		char* group = zlist_next(groups);
+		while(group != NULL) {
+		    printf("[%s] %s\n", self->name, group);
+		    group = zlist_next(groups);
+		}
+		printf("[%s] end of own groups\n", self->name);
+	    } else {
                 printf ("[%s] invalid message from keyboard\n", self->name);
-                assert (false);
             }
             free (command);
             zmsg_destroy (&msg);
@@ -251,6 +289,10 @@ void communication(resource_t *self) {
         }	
         else if (which == zyre_socket (self->node)) {
             zmsg_t *msg = zmsg_recv (which);
+	    if (!msg) {
+	        printf("[%s] interrupted!\n", self->name); 
+	        return;
+            }
             char *event = zmsg_popstr (msg);
             char *peer = zmsg_popstr (msg);
             char *name = zmsg_popstr (msg);
@@ -354,10 +396,12 @@ void logging(resource_t *self) {
 static void resource_actor(zsock_t *pipe, void *args){
     char** argv = (char**) args; 
     char* name = (char*) argv[2];
+    char* group = (char*) argv[3];
     //printf("[%s] actor started.\n", name);
     // creating state of LCSM
     resource_t *self = (resource_t *) zmalloc (sizeof (resource_t));
     self->name = name;
+    self->group = group;
     self->pipe = pipe;
     self->com = NULL;
     self->input_events = zlist_new();
@@ -413,8 +457,8 @@ static void resource_actor(zsock_t *pipe, void *args){
 int main(int argc, char *argv[])
 {
     /* Usage */
-    if (argc < 4) {
-        puts ("syntax: ./proxy myfsm myname proto_port");
+    if (argc < 5) {
+        puts ("syntax: ./proxy myfsm myname mygroup proto_port");
         exit (0);
     }
     // Create Lua state variable for the rFSM
@@ -454,12 +498,16 @@ int main(int argc, char *argv[])
 	        break;
 	message[strlen(message)-1] = 0; // drop the trailing linefeed
 	char * pch;
-  	char * command = strtok (message," ");
-	char * string = strtok (NULL, " ");
-	zstr_sendx (actor, command, string, NULL);
+	pch = strtok (message," ");
+  	while (pch != NULL) {
+    	    printf ("Received: %s\n",pch);
+	    zstr_sendm (actor, pch);
+    	    pch = strtok (NULL, " ,.-");
+  	}
+	zstr_send(actor, NULL);
     }
     // System interrupt received. Close actor thread and LCSM
-    printf("[%s] received interrupt, aborting...\n", argv[2]);
+    printf("\n[%s] received interrupt, aborting...\n", argv[2]);
     zactor_destroy (&actor);
 
 out:

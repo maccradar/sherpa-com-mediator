@@ -1,15 +1,13 @@
-#ifndef SHERPA_DEFS
-#define SHERPA_DEFS "SHERPA Definitions"
-
-// SHERPA Protocol constants for signalling
-#define SHERPA "SHERPA"
+#ifndef PROXY_DEFS
+#define PROXY_DEFS "Definitions"
 
 // Dependencies
-#include "czmq.h"
 #include "rfsmbinding.h"
 #include <jansson.h>
 #include <time.h>
 #include <zyre.h>
+
+#define TIMEOUT 1000
 
 // Global lua state
 lua_State *L;
@@ -39,6 +37,7 @@ static char* generate_json(event_t* e) {
 
 typedef struct {
     char *name;
+    char *group;
     zyre_t *node; // pointer to Zyre node
     zsock_t *pipe; // main loop socket
     zpoller_t *com; // poller to check communication channels
