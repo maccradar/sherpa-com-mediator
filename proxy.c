@@ -300,6 +300,10 @@ void communication(resource_t *self) {
 
             if (streq (event, "ENTER")) { 
                 printf ("%s has joined.\n", name);
+		char* model_uri = zyre_peer_header_value(self->node, peer, "MODEL");
+		char* model = read_url(model_uri);
+		printf ("%s has model %s\n", name, model_uri);
+		printf ("%s\n", model);
             }
             else if (streq (event, "EXIT")) { 
                 printf ("%s has left.\n", name);
