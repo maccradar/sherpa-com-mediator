@@ -114,6 +114,7 @@ static char* generate_json(event_t* e) {
 typedef struct {
     char *name;
     char *group;
+    char *model_uri;
     zyre_t *node; // pointer to Zyre node
     zsock_t *pipe; // main loop socket
     zpoller_t *com; // poller to check communication channels
