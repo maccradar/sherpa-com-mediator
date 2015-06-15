@@ -10,6 +10,9 @@
 # Unignore all dirs
 !*/
 
+# Unignore Makefiles
+!Makefile
+
 # Ignore build and install dirs
 build/
 install/

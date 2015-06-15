@@ -60,7 +60,7 @@ int configuring_resources(resource_t* self) {
     // send signal on pipe socket to acknowledge initialization
     zsock_signal (self->pipe, 0);
     self->node = zyre_new(self->name);
-    zyre_set_header(self->node,"MODEL", self->model_uri); 
+    zyre_set_header(self->node,"MODEL", "%s", self->model_uri); 
     //zyre_set_verbose(self->node);    
     self->com =  zpoller_new (self->pipe, zyre_socket(self->node), NULL);
     self->configured_resources = true;

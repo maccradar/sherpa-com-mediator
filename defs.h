@@ -2,7 +2,7 @@
 #define PROXY_DEFS "Definitions"
 
 // Dependencies
-#include "rfsmbinding.h"
+#include <rfsmbinding.h>
 #include <jansson.h>
 #include <time.h>
 #include <zyre.h>
