@@ -19,16 +19,17 @@
 //  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 //  DEALINGS IN THE SOFTWARE.
 //  --------------------------------------------------------------------------
-#include <czmq.h>
 #include <jansson.h>
 #include <zyre.h>
 #define ENCODER_INTERVAL  1000    //  msecs
+#define MODEL_URI "http://people.mech.kuleuven.be/~jphilips/json/encoder.json"
 
 static void encoder_actor (zsock_t *pipe, void *args) {
     char** argv = (char**) args;
     char* name = (char*) argv[1];
     char* group = (char*) argv[2];
     zyre_t *node = zyre_new(name);
+    zyre_set_header(node,"MODEL", MODEL_URI); 
     if (!node)
  	return;
     zyre_start(node);
