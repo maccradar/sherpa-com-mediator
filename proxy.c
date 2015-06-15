@@ -30,6 +30,7 @@
  */
 
 #include "defs.h"
+#define MODEL_URI "http://people.mech.kuleuven.be/~jphilips/json/proxy.json"
 
 /*! \brief Computation function for LCSM creating state of the Proxy.
     This function creates the necessary data structures for the Proxy's LCSM.
@@ -60,6 +61,7 @@ int configuring_resources(resource_t* self) {
     // send signal on pipe socket to acknowledge initialization
     zsock_signal (self->pipe, 0);
     self->node = zyre_new(self->name);
+    zyre_set_header(self->node,"MODEL", MODEL_URI); 
     //zyre_set_verbose(self->node);    
     self->com =  zpoller_new (self->pipe, zyre_socket(self->node), NULL);
     self->configured_resources = true;
