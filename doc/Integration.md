@@ -16,3 +16,16 @@ This is the goal for next week:
 - World Model local node connecting locally through gossip
 - Local nodes join SHERPA group
 - All local communication uses SHOUT
+
+
+### Encoding ROS things to JSON
+
+- type: forward forward-all execution-tst update-execution-tst peers
+- peers return [{}, {}]
+- group-name: SHERPA
+- short-name: uav0   (WHISPER)
+- peerid: ...
+- topic-name:
+- payload: ROS OJECT IN JSON
+
+
