@@ -60,13 +60,14 @@ static void proxy_destroy(proxy_t **self_p) {
     This function creates the necessary data structures for the Proxy's LCSM.
     \param self pointer to resource_t data structure. 
  */
-int creating(resource_t *self) {
-    printf("[%s] creating...", self->name);
-    self->node =  NULL;
-    self->com =  NULL;
-    self->input = NULL;
-    self->userinput = NULL;
-    self->configured_resources = false;
+int creating(proxy_t *self) {
+    resource_t *r = self->resource;
+    printf("[%s] creating...", r->name);
+    r->node =  NULL;
+    r->com =  NULL;
+    r->input = NULL;
+    r->userinput = NULL;
+    r->configured_resources = false;
     printf("...done.\n");
    
     return 0;
@@ -77,27 +78,28 @@ int creating(resource_t *self) {
     for the Proxy's LCSM.
     \param self pointer to resource_t data structure. 
  */
-int configuring_resources(resource_t* self) {
-    if(self->configured_resources)
+int configuring_resources(proxy_t* self) {
+    resource_t *r = self->resource;
+    if(r->configured_resources)
 	return 0;
-    printf("[%s] configuring resources...", self->name);
+    printf("[%s] configuring resources...", r->name);
     // send signal on pipe socket to acknowledge initialization
-    zsock_signal (self->pipe, 0);
-    self->node = zyre_new(self->name);
-    zyre_set_header(self->node,"Model", "%s", self->model_uri); 
-    zyre_set_header(self->node,"Type", "%s", self->type);
-    if(streq(self->networking, "gossip")) {
+    zsock_signal (r->pipe, 0);
+    r->node = zyre_new(r->name);
+    zyre_set_header(self->node,"Model", "%s", r->model_uri); 
+    zyre_set_header(self->node,"Type", "%s", r->type);
+    if(streq(r->networking, "gossip")) {
         printf("...using gossip...");
         zyre_set_endpoint(self->node, "ipc://%s", self->name);
         zyre_gossip_connect(self->node,"ipc://gossip-hub");
     }
     
     self->proxy = zyre_new(self->name);
-    zyre_set_endpoint(self->proxy, "ipc://%s", self->name);
-    zyre_gossip_bind(self->proxy, "ipc://proxy-hub");
+    zyre_set_endpoint(self->proxy, "ipc://%s", r->name);
+    zyre_gossip_bind(self->proxy, "ipc://%s-hub");
     //zyre_set_verbose(self->node);    
-    self->com =  zpoller_new (self->pipe, zyre_socket(self->node), zyre_socket(self->proxy), NULL);
-    self->configured_resources = true;
+    r->com =  zpoller_new (r->pipe, zyre_socket(r->node), zyre_socket(self->gossip), NULL);
+    r->configured_resources = true;
     printf("done.\n");
 
     return 0;
