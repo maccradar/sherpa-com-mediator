@@ -31,6 +31,31 @@
 
 #include "defs.h"
 
+typedef struct _proxy_t {
+    resource_t *resource;
+    zyre_t *gossip;
+} proxy_t;
+
+// Constructor
+static proxy_t * proxy_new (zsock_t *pipe, void *args) {
+    proxy_t *self = (proxy_t *) zmalloc (sizeof (proxy_t));
+    self->resource = resource_new(pipe, args);
+ 
+    return self;
+}
+
+// Destructor
+static void proxy_destroy(proxy_t **self_p) {
+    assert (self_p);
+    if (*self_p) {
+        printf("Destroying proxy...\n");
+        proxy_t *self = *self_p;
+        resource_destroy(&self->resource);
+        zhash_destroy (&self->required_modules);
+        free(self);
+        *self_p = NULL;
+    }
+}
 /*! \brief Computation function for LCSM creating state of the Proxy.
     This function creates the necessary data structures for the Proxy's LCSM.
     \param self pointer to resource_t data structure. 
@@ -42,9 +67,8 @@ int creating(resource_t *self) {
     self->input = NULL;
     self->userinput = NULL;
     self->configured_resources = false;
-    self->deleted = false;
     printf("...done.\n");
-
+   
     return 0;
 }
 
@@ -60,9 +84,19 @@ int configuring_resources(resource_t* self) {
     // send signal on pipe socket to acknowledge initialization
     zsock_signal (self->pipe, 0);
     self->node = zyre_new(self->name);
-    zyre_set_header(self->node,"MODEL", "%s", self->model_uri); 
+    zyre_set_header(self->node,"Model", "%s", self->model_uri); 
+    zyre_set_header(self->node,"Type", "%s", self->type);
+    if(streq(self->networking, "gossip")) {
+        printf("...using gossip...");
+        zyre_set_endpoint(self->node, "ipc://%s", self->name);
+        zyre_gossip_connect(self->node,"ipc://gossip-hub");
+    }
+    
+    self->proxy = zyre_new(self->name);
+    zyre_set_endpoint(self->proxy, "ipc://%s", self->name);
+    zyre_gossip_bind(self->proxy, "ipc://proxy-hub");
     //zyre_set_verbose(self->node);    
-    self->com =  zpoller_new (self->pipe, zyre_socket(self->node), NULL);
+    self->com =  zpoller_new (self->pipe, zyre_socket(self->node), zyre_socket(self->proxy), NULL);
     self->configured_resources = true;
     printf("done.\n");
 
@@ -105,16 +139,17 @@ int pausing(resource_t *self) {
     \param self pointer to resource_t data structure. 
  */
 int deleting(resource_t *self) {
-    if(self->deleted)
-	return 0;
+    //if(self->deleted)
+    // return 0;
     printf("[%s] deleting...", self->name);
     //  When we're done, clean up properly
-    zpoller_destroy (&self->com);
+    //zpoller_destroy (&self->com);
     //zyre_stop(self->node);
     //zclock_sleep(100);
-    zyre_destroy(&self->node);
+    //zyre_destroy(&self->node);
     
-    self->deleted = true;
+    //self->deleted = true;
+    resource_destroy(&self);
     printf("done.\n");
     return 0;
 }
@@ -286,6 +321,8 @@ void communication(resource_t *self) {
             free (command);
             zmsg_destroy (&msg);
   	    zmsg_destroy (&msg);
+        }
+        else if (which == zyre_socket (self->proxy)) {
         }	
         else if (which == zyre_socket (self->node)) {
             zmsg_t *msg = zmsg_recv (which);
@@ -293,36 +330,84 @@ void communication(resource_t *self) {
 	        printf("[%s] interrupted!\n", self->name); 
 	        return;
             }
-            char *event = zmsg_popstr (msg);
-            char *peer = zmsg_popstr (msg);
-            char *name = zmsg_popstr (msg);
-            char *group = zmsg_popstr (msg);
-            char *message = zmsg_popstr (msg);
 
-            if (streq (event, "ENTER")) { 
-                printf ("%s has joined.\n", name);
-		char* model_uri = zyre_peer_header_value(self->node, peer, "MODEL");
-		char* model = read_url(model_uri);
-		printf ("%s has model %s\n", name, model_uri);
-		printf ("%s\n", model);
+	    event_t *e = (event_t *) zmalloc (sizeof (event_t));
+            char *event = zmsg_popstr (msg);
+            if (streq (event, "ENTER")) {
+                assert (zmsg_size(msg) == 4);
+                char *peerid = zmsg_popstr (msg);
+                char *name = zmsg_popstr (msg);
+                zframe_t *headers_packed = zmsg_pop (msg);
+                char *address = zmsg_popstr (msg);
+
+                printf ("[%s] %s %s %s <headers> %s\n", self->name, event, peerid, name, address);
+                char* model_uri = zyre_peer_header_value(self->node, peerid, "Model");
+                assert(model_uri != NULL);
+                char* model = read_url(model_uri);
+                char* type = zyre_peer_header_value(self->node, peerid, "Type");
+                e->metamodel_id = "ZYRE";
+                e->model_id = strdup(type);
+                e->event_id = "ENTER";
+                e->timestamp = zclock_timestr();
+                zlist_push(self->input_events, e);
+                printf ("[%s] %s has model %s and type %s\n",self->name, name, model_uri, type);
+                zstr_free(&peerid);
+                zstr_free(&name);
+                zframe_destroy(&headers_packed);
+                zstr_free(&address);            
+		zstr_free(&model_uri);
+                zstr_free(&model);
+                zstr_free(&type);
             }
-            else if (streq (event, "EXIT")) { 
-                printf ("%s has left.\n", name);
+            else if (streq (event, "EXIT") || streq (event, "STOP")) {
+                assert (zmsg_size(msg) == 2);
+                char *peerid = zmsg_popstr (msg);
+                char *name = zmsg_popstr (msg);
+                printf ("[%s] %s %s %s\n", self->name, event, peerid, name);
+                zstr_free(&peerid);
+                zstr_free(&name);
             }
-            else if (streq (event, "SHOUT")) { 
-                printf ("%s: %s\n", name, message);
+            else if (streq (event, "SHOUT")) {
+                assert (zmsg_size(msg) == 4);
+                char *peerid = zmsg_popstr (msg);
+                char *name = zmsg_popstr (msg);
+                char *group = zmsg_popstr (msg);
+                char *message = zmsg_popstr (msg);
+                printf ("[%s] %s %s %s %s %s\n", self->name, event, peerid, name, group, message);
+                zstr_free(&peerid);
+                zstr_free(&name);
+                zstr_free(&group);
             }
-	    else {
-            	printf ("Message from node\n");
-            	printf ("event: %s peer: %s  name: %s\n  group: %s message: %s\n", event, peer, name, group, message);
-	    }
-            free (event);
-            free (peer);
-            free (name);
-            free (group);
-            free (message);
+            else if (streq (event, "JOIN")) {
+                assert (zmsg_size(msg) == 3);
+                char *peerid = zmsg_popstr (msg);
+                char *name = zmsg_popstr (msg);
+                char *group = zmsg_popstr (msg);
+                printf ("[%s] %s %s %s %s\n", self->name, event, peerid, name, group);
+                zstr_free(&peerid);
+                zstr_free(&name);
+                zstr_free(&group);
+            } 
+            else {
+                zmsg_print(msg);
+            }
+
+            zstr_free (&event);
             zmsg_destroy (&msg);
         }
+
+    /* Iterate over output events and check for ZYRE events */
+    event_t *e = (event_t *) zlist_first (self->output_events);
+    while (e) {
+        if(e->metamodel_id == "ZYRE") {
+            printf("[%s] processing ZYRE event %s\n", self->name, e->event_id);
+            if(e->event_id == "SHOUT") {
+                zyre_shouts (self->node, self->group, "%s", e->model_id);
+            }
+            zlist_remove(self->output_events, e);
+        }
+        e = (event_t *) zlist_next (self->output_events);
+    }
 }
 
 /*! \brief Coordination function, which is part of the running loop.
@@ -398,20 +483,7 @@ void logging(resource_t *self) {
     [LOGGING]	 	log all data that has been changed in this step. Basically, this means logging the resource_t state.
  */
 static void resource_actor(zsock_t *pipe, void *args){
-    char** argv = (char**) args; 
-    char* name = (char*) argv[2];
-    char* group = (char*) argv[3];
-    //printf("[%s] actor started.\n", name);
-    // creating state of LCSM
-    resource_t *self = (resource_t *) zmalloc (sizeof (resource_t));
-    self->name = name;
-    self->group = group;
-    self->pipe = pipe;
-    self->com = NULL;
-    self->input_events = zlist_new();
-    self->output_events = zlist_new();
-    self->model_uri = argv[4];
-    // end creating state of LCSM
+    resource_t *self = resource_new(pipe, args);
 
     // Running loop of this process:
     // 
@@ -427,7 +499,7 @@ static void resource_actor(zsock_t *pipe, void *args){
     //
     // Continue until deleted flag is set by the role's LCSM or system interrupt is received.
 
-    while (!self->deleted && !zsys_interrupted) {
+    while (!zsys_interrupted) {
 	//printf("[%s] actor loop\n", name);
 	/*	[COMMUNICATION] 	*/
 	communication(self);
@@ -447,7 +519,7 @@ static void resource_actor(zsock_t *pipe, void *args){
     }
     // if interrupted or deleted, run deleting state one last time
     deleting(self);
-    printf("[%s] actor stopped.\n", name);
+    printf("[%s] actor stopped.\n", ((char**)args)[2]);
     // signal main thread that actor has stopped.
     zsock_signal(pipe, -1);
 }
@@ -462,8 +534,8 @@ static void resource_actor(zsock_t *pipe, void *args){
 int main(int argc, char *argv[])
 {
     /* Usage */
-    if (argc < 5) {
-        puts ("syntax: ./proxy myfsm myname mygroup mymodel proto_port");
+    if (argc < 7) {
+        puts ("syntax: ./proxy myfsm myname mygroup mytype mymodel networking proto_port");
         exit (0);
     }
     // Create Lua state variable for the rFSM
@@ -475,7 +547,7 @@ int main(int argc, char *argv[])
     char *proto_port;
     fsm = argv[1];
     name = argv[2];
-    proto_port = argv[5];
+    proto_port = argv[7];
     
     lua_pushstring(L, fsm);
     lua_setglobal(L, "fsm_uri");

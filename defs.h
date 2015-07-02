@@ -38,6 +38,8 @@ WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
  
 char* read_url(char* url)
 {
+  if(url == NULL)
+	return NULL;
   CURL *curl_handle;
   CURLcode res;
  
@@ -115,6 +117,7 @@ typedef struct {
     char *name;
     char *group;
     char *model_uri;
+    char *type;
     zyre_t *node; // pointer to Zyre node
     zsock_t *pipe; // main loop socket
     zpoller_t *com; // poller to check communication channels
@@ -122,8 +125,50 @@ typedef struct {
     zlist_t *output_events; // list of output events
     char *input; // latest received input
     char *userinput; // latest user input
-    bool deleted;
+ //   bool deleted;
     bool configured_resources;
+    char *networking; // gossip or udp
 } resource_t;
+
+static resource_t * resource_new (zsock_t *pipe, void *args) {
+    char** argv = (char**) args; 
+    printf("Creating new resource:\n");
+    printf("Name: %s\n", argv[2]);
+    printf("Group: %s\n", argv[3]);
+    printf("Type: %s\n", argv[4]);
+    printf("Model: %s\n", argv[5]);
+    printf("Networking: %s\n", argv[6]);
+    printf("Proto: %s\n", argv[7]);
+    resource_t *self = (resource_t *) zmalloc (sizeof (resource_t));
+    self->name = (char*) argv[2];
+    self->group = (char*) argv[3];
+    self->type = (char*) argv[4];
+    self->pipe = pipe;
+    self->com = NULL;
+    self->input_events = zlist_new();
+    self->output_events = zlist_new();
+    self->model_uri = (char*) argv[5];
+    self->networking = (char*) argv[6]; 
+    return self;
+}    
+
+
+static void resource_destroy (resource_t **self_p) {
+    assert (self_p);
+    if(*self_p) {
+        printf("Destroying resource...\n");
+        resource_t *self = *self_p;
+        // zstr_free(&self->name); // passed as argument so freed by main loop
+        // zstr_free(&self->group); // passed as argument so freed by main loop
+        // zstr_free(&self->type); // passed as argument so freed by main loop
+	zpoller_destroy(&self->com);
+        zlist_destroy(&self->input_events);
+        zlist_destroy(&self->output_events);
+        // zstr_free(&self->model_uri); // passed as argument so freed by main loop
+        zyre_destroy(&self->node);	    	
+        free (self);
+        *self_p = NULL;
+    }
+}
 
 #endif
