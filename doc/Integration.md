@@ -52,8 +52,9 @@ The contained msg is forwarded to the indicated peer via whisper by the proxy
 The contained msg is forwarded to all known peers by the proxy
 {
   metamodel: sherpa_msgs
-  model: forward-all
-  data: msg
+  model: uri
+  type: forward-all
+  payload: msg
 }
 
 This msg passes the TST to the WM
