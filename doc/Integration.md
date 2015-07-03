@@ -21,11 +21,11 @@ This is the goal for next week:
 ### Encoding ROS things to JSON
 
 - type: forward forward-all execution-tst update-execution-tst peers
-- peers return [{}, {}]
+- peers return JSON array with JSON objects containing name, id, type, capabilities, ... [{}, {}]
 - group-name: SHERPA
 - short-name: uav0   (WHISPER)
 - peerid: ...
 - topic-name:
-- payload: ROS OJECT IN JSON
+- payload: ROS OBJECT IN JSON
 
 
