@@ -1,8 +1,8 @@
 #include <zyre.h>
 
 int main(int argc, char *argv[]) {
-    char *self = argv[0];
-    char *hub = argv[1];
+    char *self = argv[1];
+    char *hub = argv[2];
     bool verbose = true;    
     int major, minor, patch;
     zyre_version (&major, &minor, &patch);
@@ -22,7 +22,7 @@ int main(int argc, char *argv[]) {
     int rc = zyre_set_endpoint (local, "ipc://%s-local", self);
     assert (rc == 0);
     //  Set up gossip network for this node
-    zyre_gossip_bind (local, "ipc://%s-hub", hub);
+    zyre_gossip_connect (local, "ipc://%s-hub", hub);
     rc = zyre_start (local);
     assert (rc == 0);
 
