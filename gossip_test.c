@@ -1,8 +1,8 @@
 #include <zyre.h>
 
 int main(int argc, char *argv[]) {
-    char *self = argv[0];
-    char *hub = argv[1];
+    char *self = argv[1];
+    char *hub = argv[2];
     bool verbose = true;    
     int major, minor, patch;
     zyre_version (&major, &minor, &patch);
