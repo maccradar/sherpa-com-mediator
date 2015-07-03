@@ -20,7 +20,7 @@ This is the goal for next week:
 
 ### Encoding ROS things to JSON
 
-- type: forward forward-all execution-tst update-execution-tst peers
+- type: forward forward-all execution-tst update-execution-tst-node peers
 - peers return JSON array with JSON objects containing name, id, type, capabilities, ... [{}, {}]
 - group-name: SHERPA
 - short-name: uav0   (WHISPER)
@@ -67,7 +67,7 @@ This msg passes the TST to the WM
 This msg updates the TST in the WM
 {
   metamodel: sherpa_msgs
-  model: update-execution-tst
+  model: update-execution-tst-node
   data: TST-update
 }
 
@@ -83,6 +83,16 @@ The TST-update:
 {
   tree-id:
   node-id:
-  param-name:
-  param-value:
+  node: TST-update-node
 }
+
+The TST-update-node:
+{
+  field1: value1,
+  field2: value2,
+  field3: value3,
+  field4: value4,
+  field5: value5
+}
+Only update the fields that are specified.
+
