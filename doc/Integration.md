@@ -26,6 +26,62 @@ This is the goal for next week:
 - short-name: uav0   (WHISPER)
 - peerid: ...
 - topic-name:
-- payload: ROS OJECT IN JSON
+- payload: ROS OBJECT IN JSON
 
+Requests all peers known to Proxy/WM
+{
+  metamodel: sherpa_msgs
+  model: peer_request
+  data: Null
+}
 
+List of all known peers
+{
+  metamodel: sherpa_msgs
+  model: peer_response
+  data: {list of peers}
+}
+
+The contained msg is forwarded to the indicated peer via whisper by the proxy
+{
+  metamodel: sherpa_msgs
+  model: forward
+  data: [node_name/uid,msg]
+}
+
+The contained msg is forwarded to all known peers by the proxy
+{
+  metamodel: sherpa_msgs
+  model: forward-all
+  data: msg
+}
+
+This msg passes the TST to the WM
+{
+  metamodel: sherpa_msgs
+  model: execution-tst
+  data: TST
+}
+
+This msg updates the TST in the WM
+{
+  metamodel: sherpa_msgs
+  model: update-execution-tst
+  data: TST-update
+}
+
+The TST data:
+{
+  tree-id: string
+  tree: {
+  ...
+  }
+}
+
+The TST-update:
+{
+  tree-id:
+  node-id:
+  param-name:
+  param-value:
+}
