@@ -1,4 +1,30 @@
 #include <zyre.h>
+#include <jansson.h>
+
+typedef struct _json_msg_t {
+    char *metamodel;
+    char *model;
+    char *type;
+    char *payload;
+} json_msg_t;
+
+void decode_json(char* message, json_msg_t *result) {
+    json_t *root;
+    json_error_t error;
+    root = json_loads(message, 0, &error);
+    
+    if(!root) {
+   	printf("Error parsing JSON string! line %d: %s\n", error.line, error.text);
+    	return;
+    }
+
+    result->metamodel = strdup(json_string_value(json_object_get(root, "metamodel")));
+    result->model = strdup(json_string_value(json_object_get(root, "model")));
+    result->type = strdup(json_string_value(json_object_get(root, "type")));
+    result->payload = strdup(json_string_value(json_object_get(root, "payload")));
+
+    json_decref(root);
+}
 
 int main(int argc, char *argv[]) {
     char *self = argv[1];
@@ -37,7 +63,7 @@ int main(int argc, char *argv[]) {
     assert (strneq (zyre_uuid (local), zyre_uuid (remote)));
     
     zyre_join (local, "SHERPA");
-    zyre_join (remote, "SHERPA");
+    zyre_join (remote, "SHERPALKU");
 
     //  Give time for them to interconnect
     zclock_sleep (100);
@@ -66,9 +92,6 @@ int main(int argc, char *argv[]) {
                 printf ("[%s] %s %s %s <headers> %s\n", self, event, peerid, name, address);
                 char* type = zyre_peer_header_value(remote, peerid, "type");
                 printf ("[%s] %s has type %s\n",self, name, type);
-                if(type == "roszyre") {
-                 // send connected peers and headers
-                }   
                 zstr_free(&peerid);
                 zstr_free(&name);
                 zframe_destroy(&headers_packed);
@@ -90,9 +113,10 @@ int main(int argc, char *argv[]) {
                 char *group = zmsg_popstr (msg);
                 char *message = zmsg_popstr (msg);
                 printf ("[%s] %s %s %s %s %s\n", self, event, peerid, name, group, message);
-                // "WHISPER <peerid> <message>;
-                // message_struct a = decode(message);
-                // zyre_whisper(remote, a.peerid, a.msg);
+                json_msg_t *result = (json_msg_t *) zmalloc (sizeof (json_msg_t));
+                decode_json(message, result);
+                printf ("[%s] message type %s\n", self, result->type);
+		zyre_shouts(remote, "SHERPALKU", "%s", message);
                 zstr_free(&peerid);
                 zstr_free(&name);
                 zstr_free(&group);

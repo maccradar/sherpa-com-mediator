@@ -110,10 +110,11 @@ int configuring_resources(proxy_t* self) {
     This function configures specific parameters to fullfil the role of a Proxy.
     \param self pointer to resource_t data structure. 
  */
-int configuring_capabilities (resource_t* self) {
-    printf("[%s] configuring capabilities...", self->name);
-    zyre_start(self->node);   
-    zyre_join(self->node, self->group);   
+int configuring_capabilities (proxy_t* self) {
+    resource_t *r = self->resource;
+    printf("[%s] configuring capabilities...", r->name);
+    zyre_start(r->node);   
+    zyre_join(r->node, self->group);   
     return 0;
 }
 

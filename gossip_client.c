@@ -1,5 +1,24 @@
 #include <zyre.h>
+#include <jansson.h>
 
+typedef struct _json_msg_t {
+    char *metamodel;
+    char *model;
+    char *type;
+    char *payload;
+} json_msg_t;
+
+static char* generate_json_msg(json_msg_t* m) {
+  json_t *root = json_object();
+  json_object_set_new( root, "metamodel", json_string(m->metamodel));
+  json_object_set_new( root, "model", json_string(m->model));
+  json_object_set_new( root, "type", json_string(m->type));
+  json_object_set_new( root, "payload", json_string(m->payload));
+  
+  char* ret_strings = json_dumps( root, 0 );
+  json_decref(root);
+  return ret_strings;
+}
 int main(int argc, char *argv[]) {
     char *self = argv[1];
     char *hub = argv[2];
@@ -16,7 +35,7 @@ int main(int argc, char *argv[]) {
     zyre_t *local = zyre_new (self); // local
     assert (local);
     
-    zyre_set_header(local,"type", "proxy");
+    zyre_set_header(local,"type", "roszyre");
     zyre_set_verbose (local);
     
     int rc = zyre_set_endpoint (local, "ipc://%s-local", self);
@@ -47,6 +66,14 @@ int main(int argc, char *argv[]) {
     zpoller_t *poller =  zpoller_new (zyre_socket(local), zyre_socket(remote), NULL);
     while(!zsys_interrupted) {
 	void *which = zpoller_wait (poller, ZMQ_POLL_MSEC);
+        json_msg_t forward_all;
+        forward_all.metamodel = "sherpa-msgs";
+        forward_all.model = "";
+        forward_all.type = "forward-all";
+        forward_all.payload = "payload";
+	char* forward_all_str = generate_json_msg(&forward_all);       
+        zyre_shouts(local, "SHERPA","%s", forward_all_str);
+	zclock_sleep(1000);
         if (which == zyre_socket (local)) {
             printf("[%s] local data received!\n", self);
             zmsg_t *msg = zmsg_recv (which);
