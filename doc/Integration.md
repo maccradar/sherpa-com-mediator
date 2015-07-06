@@ -1,4 +1,12 @@
-
+### Agreements
+- Payload is opaque to communication proxy
+- How to handle updates:
+    - Local state updates
+    - Local WM receives update message on local group
+    - At its own frequency, local WM sends collection of updates to Proxy
+    - Proxy forwards message to remote
+    - Remote Proxy receives forwarded message, unpacks payload and puts it on its local group
+- Payload should be typed so entities can check if this payload is relevant for them 
 
 This is the goal for the first day:
 
@@ -45,8 +53,11 @@ List of all known peers
 The contained msg is forwarded to the indicated peer via whisper by the proxy
 {
   metamodel: sherpa_msgs
-  model: forward
-  data: [node_name/uid,msg]
+  model: uri
+  type: forward 
+  destination: node_name/uuid
+  hops: max # hops
+  payload: msg
 }
 
 The contained msg is forwarded to all known peers by the proxy
