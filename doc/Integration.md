@@ -1,4 +1,7 @@
 ### Agreements
+- Use Zyre version 1.0
+- ZeroMQ version 4.0
+- CZMQ version 4.0
 - Payload is opaque to communication proxy
 - How to handle updates:
     - Local state updates
