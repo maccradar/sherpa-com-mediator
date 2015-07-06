@@ -1,0 +1,6 @@
+{
+    "short-name": "rmax0",
+    "long-name": "http://www.ida.liu.se/aiics/rmax0",
+    "type": "hawk",
+    "capabilities": ["fly-to", "scan-ground-single", "init-collect-data", "stop-collect-data", "analyse-data", "yaw", "inform-collect-data"]
+}
