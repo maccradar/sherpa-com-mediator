@@ -33,6 +33,14 @@ This is the goal for next week:
 - Local nodes join SHERPA group
 - All local communication uses SHOUT
 
+### Payload structure:
+
+Typical ROS message:
+- type: to-topic
+- topic: /fipa_acl_message
+- msg: ...
+
+Possible values for type: to-topic, 
 
 ### Encoding ROS things to JSON
 
@@ -42,7 +50,7 @@ This is the goal for next week:
 - short-name: uav0   (WHISPER)
 - peerid: ...
 - topic-name:
-- payload: ROS OBJECT IN JSON
+- payload: Some payload
 
 Requests all peers known to Proxy/WM
 {
