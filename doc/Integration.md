@@ -18,12 +18,12 @@
 
 This is the goal for the first day:
 
-![simple_goal](simple_goal.svg)
+![simple_goal](https://gitlab.mech.kuleuven.be/u0052546/sherpa-proxy/raw/local_gossip/doc/simple_goal.svg)
 
 
 This is the goal for next week:
 
-![final_goal](final_goal.svg)
+![final_goal](https://gitlab.mech.kuleuven.be/u0052546/sherpa-proxy/raw/local_gossip/doc/final_goal.svg)
 
 ### Communication within one platform
 - ROS node running Delegation code connecting locally through gossip
