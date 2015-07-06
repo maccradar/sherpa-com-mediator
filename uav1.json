@@ -1,0 +1,6 @@
+{
+    "short-name": "uav1",
+    "long-name": "http://lku/uav1",
+    "type": "wasp",
+    "capabilities": ["flyto", "scan"]
+}

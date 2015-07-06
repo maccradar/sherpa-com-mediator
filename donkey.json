@@ -1,0 +1,6 @@
+{
+    "short-name": "<shortname>",
+    "long-name": "<longname>",
+    "type": "donkey",
+    "capabilities": ["charge", "moveto"]
+}

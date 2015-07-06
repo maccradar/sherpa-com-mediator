@@ -1,0 +1,6 @@
+{
+    "short-name": "<short-name>",
+    "long-name": "<long-name>",
+    "type": "genius",
+    "capabilities": ["inspect", "delegate"]
+}
