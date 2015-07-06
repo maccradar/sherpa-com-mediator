@@ -26,9 +26,42 @@ void decode_json(char* message, json_msg_t *result) {
     json_decref(root);
 }
 
+char* generate_peers(zyre_t *remote, json_t *config) {
+    json_t *root;
+    root = json_array();
+
+    zlist_t * peers = zyre_peers(remote);
+    char *peer = zlist_first (peers);
+    while(peer != NULL) {
+        /* config is a JSON object */ 
+        const char *key;
+        json_t *value;
+        json_t *headers = json_object();
+        json_object_foreach(config, key, value) {
+            /* block of code that uses key and value */
+            char * header_value = zyre_peer_header_value(remote, peer, key);
+            json_object_set(headers, key, json_string(header_value));
+        }
+        json_array_append(root, headers);
+        peer = zlist_next (peers);
+    }
+    return json_dumps(root, JSON_ENSURE_ASCII);
+}
+json_t * load_config_file(char* file) {
+    json_error_t error;
+    json_t * root;
+    root = json_load_file(file, JSON_ENSURE_ASCII, &error);
+    if(!root) {
+   	printf("Error parsing JSON file! line %d: %s\n", error.line, error.text);
+    	return NULL;
+    }
+    return root;	
+}
+
 int main(int argc, char *argv[]) {
-    char *self = argv[1];
-    char *hub = argv[2];
+    //char *self = argv[1];
+    //char *hub = argv[2];
+    
     bool verbose = true;    
     int major, minor, patch;
     zyre_version (&major, &minor, &patch);
@@ -36,26 +69,37 @@ int main(int argc, char *argv[]) {
     assert (minor == ZYRE_VERSION_MINOR);
     assert (patch == ZYRE_VERSION_PATCH);
     
+    // load configuration file
+    json_t * config = load_config_file(argv[1]);
+    const char *self = json_string_value(json_object_get(config, "short-name"));
+    
     //  Create two nodes: 
     //  - local gossip node for backend
     //  - remote udp node for frontend
-    zyre_t *local = zyre_new (self); // local
-    assert (local);
+    zyre_t *local = zyre_new (self);
+    assert (local); 
+    zyre_t *remote = zyre_new (self);
+    assert (remote);
     
-    zyre_set_header(local,"type", "proxy");
+    /* config is a JSON object */ 
+    const char *key;
+    json_t *value;
+
+    json_object_foreach(config, key, value) {
+        /* block of code that uses key and value */
+        zyre_set_header(local, key, "%s", json_dumps(value, JSON_ENSURE_ASCII));
+        zyre_set_header(remote, key, "%s", json_dumps(value, JSON_ENSURE_ASCII));
+    }
+ 
     zyre_set_verbose (local);
     
     int rc = zyre_set_endpoint (local, "ipc://%s-local", self);
     assert (rc == 0);
     //  Set up gossip network for this node
-    zyre_gossip_bind (local, "ipc://%s-hub", hub);
+    zyre_gossip_bind (local, "ipc://%s-hub", self);
     rc = zyre_start (local);
     assert (rc == 0);
-
-    zyre_t *remote = zyre_new (self);
-    assert (remote);
     
-    zyre_set_header(remote,"type", "proxy");
     zyre_set_verbose (remote);
     
     rc = zyre_start (remote);
@@ -63,7 +107,7 @@ int main(int argc, char *argv[]) {
     assert (strneq (zyre_uuid (local), zyre_uuid (remote)));
     
     zyre_join (local, "SHERPA");
-    zyre_join (remote, "SHERPALKU");
+    zyre_join (remote, "SHERPA");
 
     //  Give time for them to interconnect
     zclock_sleep (100);
@@ -116,7 +160,9 @@ int main(int argc, char *argv[]) {
                 json_msg_t *result = (json_msg_t *) zmalloc (sizeof (json_msg_t));
                 decode_json(message, result);
                 printf ("[%s] message type %s\n", self, result->type);
-		zyre_shouts(remote, "SHERPALKU", "%s", message);
+		zyre_shouts(remote, "SHERPALKU", "%s", message);        
+                if (streq (result->type, "peers"))
+			zyre_whispers(local, peerid, "%s", generate_peers(remote, config));
                 zstr_free(&peerid);
                 zstr_free(&name);
                 zstr_free(&group);
@@ -178,6 +224,9 @@ int main(int argc, char *argv[]) {
                 char *group = zmsg_popstr (msg);
                 char *message = zmsg_popstr (msg);
                 printf ("[%s] %s %s %s %s %s\n", self, event, peerid, name, group, message);
+                json_msg_t *result = (json_msg_t *) zmalloc (sizeof (json_msg_t));
+                decode_json(message, result);
+                printf ("[%s] message type %s\n", self, result->type);
                 zstr_free(&peerid);
                 zstr_free(&name);
                 zstr_free(&group);

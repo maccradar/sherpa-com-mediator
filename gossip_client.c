@@ -69,7 +69,7 @@ int main(int argc, char *argv[]) {
         json_msg_t forward_all;
         forward_all.metamodel = "sherpa-msgs";
         forward_all.model = "";
-        forward_all.type = "forward-all";
+        forward_all.type = "peers";
         forward_all.payload = "payload";
 	char* forward_all_str = generate_json_msg(&forward_all);       
         zyre_shouts(local, "SHERPA","%s", forward_all_str);
