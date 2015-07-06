@@ -7,6 +7,14 @@
     - Proxy forwards message to remote
     - Remote Proxy receives forwarded message, unpacks payload and puts it on its local group
 - Payload should be typed so entities can check if this payload is relevant for them 
+- One proxy per robot, each proxy loads configuration file (JSON) with:
+  {
+    short-name: string,
+    long-name: unique string,
+    type: [genius | hawk | wasp | donkey]
+    capabilities: list of strings
+  }
+- Proxy adds configuration file to header 
 
 This is the goal for the first day:
 
@@ -39,14 +47,15 @@ This is the goal for next week:
 Requests all peers known to Proxy/WM
 {
   metamodel: sherpa_msgs
-  model: peer_request
-  data: Null
+  model: uri
+  type: peers
+  payload: <empty>
 }
 
 List of all known peers
 {
   metamodel: sherpa_msgs
-  model: peer_response
+  model: peers_reply
   data: {list of peers}
 }
 
