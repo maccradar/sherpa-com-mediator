@@ -157,3 +157,8 @@ Only update the fields that are specified.
 - confirmation that the TST is distributed
 - Release the first version of the proxy
 - Release the first version of the world model
+
+### BUGS
+
+- payload in envelope is not a char *, so gossip_proxy.c do not work since it trie to unpack
+  to the wrong structure.
