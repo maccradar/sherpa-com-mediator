@@ -18,8 +18,11 @@
     capabilities: list of strings
   }
 - Proxy adds configuration file to header 
-
-
+- Local group (between proxy and delegation framework and world model) is "local"
+- Remote group (between proxies) is "remote"
+- Envelope is always proxy related
+- when new peers arrive, proxy shouts "peer-list"
+- when local entity whispers "peers", proxy whisers "peer-list" to that entity
 ### Communication within one platform
 - ROS node running Delegation code connecting locally through gossip
 - Proxy local node binding locally through gossip
@@ -58,7 +61,7 @@ Requests all peers known to Proxy/WM
 List of all known peers
 {
   metamodel: sherpa_msgs
-  model: peers_reply
+  model: peer-list
   data: {list of peers}
 }
 
@@ -117,5 +120,20 @@ The TST-update-node:
   field4: value4,
   field5: value5
 }
+
+Create team:
+{
+   metamodel: sherpa_msgs
+   model: uri
+   type: create-team
+   payload: { team: <team-name>,
+              [ <peerid>, ...]
+            }
+}
+
 Only update the fields that are specified.
 
+### TODO
+- handshake on group name between proxies
+- teams should get a group assigned during delegation
+- create a team based on list of peerids
