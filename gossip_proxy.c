@@ -83,7 +83,7 @@ int main(int argc, char *argv[]) {
     // load configuration file
     json_t * config = load_config_file(argv[1]);
     const char *self = json_string_value(json_object_get(config, "short-name"));
-    bool verbose = json_boolean_value(json_object_get(config, "verbose"));
+    bool verbose = json_is_true(json_object_get(config, "verbose"));
     //  Create two nodes: 
     //  - local gossip node for backend
     //  - remote udp node for frontend
@@ -107,7 +107,8 @@ int main(int argc, char *argv[]) {
         zyre_set_header(remote, key, "%s", header_value);
     }
  
-    zyre_set_verbose (local);
+    if(verbose)
+	zyre_set_verbose (local);
     
     int rc;
     if(json_is_true(json_object_get(config, "gossip"))) {
