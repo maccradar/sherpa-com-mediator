@@ -111,10 +111,12 @@ int main(int argc, char *argv[]) {
     zyre_set_verbose (local);
     
     int rc;
-    //rc = zyre_set_endpoint (local, "ipc://%s-local", self);
-    //assert (rc == 0);
-    //  Set up gossip network for this node
-    //zyre_gossip_bind (local, "ipc://%s-hub", self);
+    if(json_is_true(json_object_get(config, "gossip"))) {
+    	rc = zyre_set_endpoint (local, "ipc://%s-local", self);
+    	assert (rc == 0);
+    	//  Set up gossip network for this node
+    	zyre_gossip_bind (local, "ipc://%s-hub", self);
+    }
     rc = zyre_start (local);
     assert (rc == 0);
     

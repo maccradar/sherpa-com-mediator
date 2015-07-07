@@ -2,5 +2,6 @@
     "short-name": "operator1",
     "long-name": "http://kul/operator1",
     "type": "genius",
-    "capabilities": ["inspect", "delegate"]
+    "capabilities": ["inspect", "delegate"],
+    "gossip": true
 }
