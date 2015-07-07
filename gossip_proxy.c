@@ -140,7 +140,7 @@ int main(int argc, char *argv[]) {
     	rc = zyre_set_endpoint (local, "ipc://%s-local", self);
     	assert (rc == 0);
     	//  Set up gossip network for this node
-    	zyre_gossip_bind (local, "ipc://%s-hub", self);
+    	zyre_gossip_bind (local, "ipc://sherpa-hub");
     }
     rc = zyre_start (local);
     assert (rc == 0);

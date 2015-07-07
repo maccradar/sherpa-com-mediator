@@ -39,10 +39,10 @@ int main(int argc, char *argv[]) {
     zyre_set_verbose (local);
     
     int rc;
-    //rc = zyre_set_endpoint (local, "ipc://%s-local", self);
-    //assert (rc == 0);
+    rc = zyre_set_endpoint (local, "ipc://%s-local", self);
+    assert (rc == 0);
     //  Set up gossip network for this node
-    //zyre_gossip_connect (local, "ipc://%s-hub", hub);
+    zyre_gossip_connect (local, "ipc://%s-hub", hub);
     rc = zyre_start (local);
     assert (rc == 0);
 
@@ -54,7 +54,6 @@ int main(int argc, char *argv[]) {
     zpoller_t *poller =  zpoller_new (zyre_socket(local), NULL);
     while(!zsys_interrupted) {
 	void *which = zpoller_wait (poller, ZMQ_POLL_MSEC);
-	zclock_sleep(1000);
         if (which == zyre_socket (local)) {
             printf("[%s] local data received!\n", self);
             zmsg_t *msg = zmsg_recv (which);
