@@ -4,5 +4,5 @@
     "type": "genius",
     "capabilities": ["inspect", "delegate"],
     "gossip": true,
-    "verbose": false
+    "verbose": true
 }

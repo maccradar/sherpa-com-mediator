@@ -137,10 +137,10 @@ int main(int argc, char *argv[]) {
     
     int rc;
     if(json_is_true(json_object_get(config, "gossip"))) {
-    	rc = zyre_set_endpoint (local, "ipc://%s-local", self);
+    	rc = zyre_set_endpoint (local, "ipc:///tmp/%s-local", self);
     	assert (rc == 0);
     	//  Set up gossip network for this node
-    	zyre_gossip_bind (local, "ipc://%s-hub", self);
+    	zyre_gossip_bind (local, "ipc:///tmp/%s-hub", self);
     }
     rc = zyre_start (local);
     assert (rc == 0);

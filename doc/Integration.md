@@ -1,15 +1,24 @@
+## Preliminary protocol from LKU-KUL Integration meeting in Leuven 2 July to 8 July 
+
+Participants:
+
+- Tommy Persson (LKU)
+- Johan Phillips (KUL)
+- Nico Huebel (KUL)
+
 ### Agreements
 - Use Zyre version 1.0
 - ZeroMQ version 4.0
 - CZMQ version 4.0
-- Payload is opaque to communication proxy
+- Payload is opaque to communication proxy (but not for all message types...)
 - How to handle updates:
     - Local state updates
     - Local WM receives update message on local group
     - At its own frequency, local WM sends collection of updates to Proxy
     - Proxy forwards message to remote
     - Remote Proxy receives forwarded message, unpacks payload and puts it on its local group
-- Payload should be typed so entities can check if this payload is relevant for them 
+- Payload should be typed so entities can check if this payload is relevant for them.
+  There is a "type" and "payload" field in the proxy message payload.
 - One proxy per robot, each proxy loads configuration file (JSON) with:
   {
     short-name: string,
@@ -23,22 +32,28 @@
 - Envelope is always proxy related
 - when new peers arrive, proxy shouts "peer-list"
 - when local entity whispers "peers", proxy whisers "peer-list" to that entity
+
 ### Communication within one platform
 - ROS node running Delegation code connecting locally through gossip
 - Proxy local node binding locally through gossip
 - Proxy remote node connecting to remote network
 - World Model local node connecting locally through gossip
 - Local nodes join SHERPA group
-- All local communication uses SHOUT
+- Nearly all local communication uses SHOUT
+- Response to peers message is a WHISPER
+
 
 ### Payload structure:
 
 Typical ROS message:
 - type: to-topic
+- payload: PAYLOAD
+
+Example PAYLOAD:
 - topic: /fipa_acl_message
 - msg: ...
 
-Possible values for type: to-topic, 
+Possible values for type: to-topic, update-execution-tst-node, execution-tst, ...
 
 ### Encoding ROS things to JSON
 
@@ -140,3 +155,10 @@ Only update the fields that are specified.
 - synchronization of clocks
 - query language to query the world model
 - confirmation that the TST is distributed
+- Release the first version of the proxy
+- Release the first version of the world model
+
+### BUGS
+
+- payload in envelope is not a char *, so gossip_proxy.c do not work since it trie to unpack
+  to the wrong structure.

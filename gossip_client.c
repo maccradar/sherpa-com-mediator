@@ -20,6 +20,7 @@ static char* generate_json_msg(json_msg_t* m) {
   return ret_strings;
 }
 int main(int argc, char *argv[]) {
+
     char *self = argv[1];
     char *hub = argv[2];
     bool verbose = true;    
@@ -53,7 +54,6 @@ int main(int argc, char *argv[]) {
     zpoller_t *poller =  zpoller_new (zyre_socket(local), NULL);
     while(!zsys_interrupted) {
 	void *which = zpoller_wait (poller, ZMQ_POLL_MSEC);
-	zclock_sleep(1000);
         if (which == zyre_socket (local)) {
             printf("[%s] local data received!\n", self);
             zmsg_t *msg = zmsg_recv (which);
