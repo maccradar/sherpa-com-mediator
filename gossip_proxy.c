@@ -45,18 +45,24 @@ char* generate_peers(zyre_t *remote, json_t *config) {
         json_object_foreach(config, key, value) {
             /* block of code that uses key and value */
             char * header_value = zyre_peer_header_value(remote, peer, key);
-            json_object_set(headers, key, json_string(header_value));
+            // Try to parse an array
+	    json_error_t error;
+	    json_t *header = json_loads(header_value,0,&error);
+	    if(!header) {
+	    	header = json_string(header_value);
+            }
+	    json_object_set(headers, key, header);
         }
         json_array_append(payload, headers);
         peer = zlist_next (peers);
     }
-    return json_dumps(root, JSON_ENSURE_ASCII);
+    return json_dumps(root, JSON_ENCODE_ANY);
 }
 json_t * load_config_file(char* file) {
     json_error_t error;
     json_t * root;
     root = json_load_file(file, JSON_ENSURE_ASCII, &error);
-    printf("[%s] config file: %s\n", json_string_value(json_object_get(root, "short-name")), json_dumps(root, JSON_ENSURE_ASCII));
+    printf("[%s] config file: %s\n", json_string_value(json_object_get(root, "short-name")), json_dumps(root, JSON_ENCODE_ANY));
     if(!root) {
    	printf("Error parsing JSON file! line %d: %s\n", error.line, error.text);
     	return NULL;
@@ -90,13 +96,16 @@ int main(int argc, char *argv[]) {
     /* config is a JSON object */ 
     const char *key;
     json_t *value;
-    printf("long name: %s\n", json_string_value(json_object_get(config, "long-name")));
-    printf("short name: %s\n", json_string_value(json_object_get(config, "short-name")));
     json_object_foreach(config, key, value) {
         /* block of code that uses key and value */
-        printf("[%s] key: %s, value: %s\n", self, key, json_dumps(value, JSON_ENCODE_ANY));
-        zyre_set_header(local, key, "%s", json_dumps(value, JSON_ENCODE_ANY));
-        zyre_set_header(remote, key, "%s", json_dumps(value, JSON_ENCODE_ANY));
+	const char *header_value;
+	if(json_is_string(value)) {
+		header_value = json_string_value(value);
+	} else {
+		header_value = json_dumps(value, JSON_ENCODE_ANY);
+	}	
+	zyre_set_header(local, key, "%s", header_value);
+        zyre_set_header(remote, key, "%s", header_value);
     }
  
     zyre_set_verbose (local);
@@ -146,11 +155,6 @@ int main(int argc, char *argv[]) {
                 printf ("[%s] %s %s %s <headers> %s\n", self, event, peerid, name, address);
                 char* type = zyre_peer_header_value(remote, peerid, "type");
                 printf ("[%s] %s has type %s\n",self, name, type);
-                // Welcome local peer by sending him a peer list
-		char *peerlist = generate_peers(remote, config);
-		zyre_whispers(local, peerid, "%s", peerlist);
-                printf ("[%s] Welcomed %s by sending peer list: %s\n", self, name, peerlist);
-                zstr_free(&peerlist);
                 zstr_free(&peerid);
                 zstr_free(&name);
                 zframe_destroy(&headers_packed);
@@ -211,6 +215,13 @@ int main(int argc, char *argv[]) {
                 char *name = zmsg_popstr (msg);
                 char *group = zmsg_popstr (msg);
                 printf ("[%s] %s %s %s %s\n", self, event, peerid, name, group);
+                // Welcome localgroup peer by sending him a peer list
+		if(streq(group, localgroup)) {
+			char *peerlist = generate_peers(remote, config);
+			zyre_whispers(local, peerid, "%s", peerlist);
+                	printf ("[%s] Welcomed %s by sending peer list: %s\n", self, name, peerlist);
+                	zstr_free(&peerlist);
+		}
                 zstr_free(&peerid);
                 zstr_free(&name);
                 zstr_free(&group);
