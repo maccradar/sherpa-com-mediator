@@ -20,6 +20,7 @@ static char* generate_json_msg(json_msg_t* m) {
   return ret_strings;
 }
 int main(int argc, char *argv[]) {
+
     char *self = argv[1];
     char *hub = argv[2];
     bool verbose = true;    
