@@ -39,10 +39,10 @@ int main(int argc, char *argv[]) {
     zyre_set_verbose (local);
     
     int rc;
-    rc = zyre_set_endpoint (local, "ipc://%s-local", self);
+    rc = zyre_set_endpoint (local, "ipc:///tmp/%s-local", self);
     assert (rc == 0);
     //  Set up gossip network for this node
-    zyre_gossip_connect (local, "ipc://%s-hub", hub);
+    zyre_gossip_connect (local, "ipc:///tmp/%s-hub", hub);
     rc = zyre_start (local);
     assert (rc == 0);
 
