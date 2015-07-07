@@ -38,14 +38,15 @@ int main(int argc, char *argv[]) {
     zyre_set_header(local,"type", "roszyre");
     zyre_set_verbose (local);
     
-    int rc = zyre_set_endpoint (local, "ipc://%s-local", self);
-    assert (rc == 0);
+    int rc;
+    //rc = zyre_set_endpoint (local, "ipc://%s-local", self);
+    //assert (rc == 0);
     //  Set up gossip network for this node
-    zyre_gossip_connect (local, "ipc://%s-hub", hub);
+    //zyre_gossip_connect (local, "ipc://%s-hub", hub);
     rc = zyre_start (local);
     assert (rc == 0);
 
-    zyre_join (local, "local");
+    zyre_join (local, "remote");
 
     if (verbose)
         zyre_dump (local);
@@ -53,13 +54,6 @@ int main(int argc, char *argv[]) {
     zpoller_t *poller =  zpoller_new (zyre_socket(local), NULL);
     while(!zsys_interrupted) {
 	void *which = zpoller_wait (poller, ZMQ_POLL_MSEC);
-        json_msg_t forward_all;
-        forward_all.metamodel = "sherpa-msgs";
-        forward_all.model = "";
-        forward_all.type = "peers";
-        forward_all.payload = "payload";
-	char* forward_all_str = generate_json_msg(&forward_all);       
-        zyre_shouts(local, "SHERPA","%s", forward_all_str);
 	zclock_sleep(1000);
         if (which == zyre_socket (local)) {
             printf("[%s] local data received!\n", self);
@@ -80,9 +74,6 @@ int main(int argc, char *argv[]) {
                 printf ("[%s] %s %s %s <headers> %s\n", self, event, peerid, name, address);
                 char* type = zyre_peer_header_value(local, peerid, "type");
                 printf ("[%s] %s has type %s\n",self, name, type);
-                if(type == "roszyre") {
-                 // send connected peers and headers
-                }   
                 zstr_free(&peerid);
                 zstr_free(&name);
                 zframe_destroy(&headers_packed);
