@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
     rc = zyre_start (local);
     assert (rc == 0);
 
-    zyre_join (local, "remote");
+    //    zyre_join (local, "remote");
 
     if (verbose)
         zyre_dump (local);
