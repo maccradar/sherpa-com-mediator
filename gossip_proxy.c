@@ -28,8 +28,13 @@ void decode_json(char* message, json_msg_t *result) {
 
 char* generate_peers(zyre_t *remote, json_t *config) {
     json_t *root;
-    root = json_array();
-
+    root = json_object(); 
+    json_object_set(root, "metamodel", json_string("sherpa_mgs"));
+    json_object_set(root, "model", json_string("http://kul/peer-list.json"));
+    json_object_set(root, "type", json_string("peer-list"));
+    json_t *payload = json_array();
+    json_object_set(root, "payload", payload);
+     
     zlist_t * peers = zyre_peers(remote);
     char *peer = zlist_first (peers);
     while(peer != NULL) {
@@ -42,7 +47,7 @@ char* generate_peers(zyre_t *remote, json_t *config) {
             char * header_value = zyre_peer_header_value(remote, peer, key);
             json_object_set(headers, key, json_string(header_value));
         }
-        json_array_append(root, headers);
+        json_array_append(payload, headers);
         peer = zlist_next (peers);
     }
     return json_dumps(root, JSON_ENSURE_ASCII);
@@ -51,6 +56,7 @@ json_t * load_config_file(char* file) {
     json_error_t error;
     json_t * root;
     root = json_load_file(file, JSON_ENSURE_ASCII, &error);
+    printf("[%s] config file: %s\n", json_string_value(json_object_get(root, "short-name")), json_dumps(root, JSON_ENSURE_ASCII));
     if(!root) {
    	printf("Error parsing JSON file! line %d: %s\n", error.line, error.text);
     	return NULL;
@@ -84,19 +90,22 @@ int main(int argc, char *argv[]) {
     /* config is a JSON object */ 
     const char *key;
     json_t *value;
-
+    printf("long name: %s\n", json_string_value(json_object_get(config, "long-name")));
+    printf("short name: %s\n", json_string_value(json_object_get(config, "short-name")));
     json_object_foreach(config, key, value) {
         /* block of code that uses key and value */
-        zyre_set_header(local, key, "%s", json_dumps(value, JSON_ENSURE_ASCII));
-        zyre_set_header(remote, key, "%s", json_dumps(value, JSON_ENSURE_ASCII));
+        printf("[%s] key: %s, value: %s\n", self, key, json_dumps(value, JSON_ENCODE_ANY));
+        zyre_set_header(local, key, "%s", json_dumps(value, JSON_ENCODE_ANY));
+        zyre_set_header(remote, key, "%s", json_dumps(value, JSON_ENCODE_ANY));
     }
  
     zyre_set_verbose (local);
     
-    int rc = zyre_set_endpoint (local, "ipc://%s-local", self);
-    assert (rc == 0);
+    int rc;
+    //rc = zyre_set_endpoint (local, "ipc://%s-local", self);
+    //assert (rc == 0);
     //  Set up gossip network for this node
-    zyre_gossip_bind (local, "ipc://%s-hub", self);
+    //zyre_gossip_bind (local, "ipc://%s-hub", self);
     rc = zyre_start (local);
     assert (rc == 0);
     
@@ -105,9 +114,10 @@ int main(int argc, char *argv[]) {
     rc = zyre_start (remote);
     assert (rc == 0);
     assert (strneq (zyre_uuid (local), zyre_uuid (remote)));
-    
-    zyre_join (local, "SHERPA");
-    zyre_join (remote, "SHERPA");
+    char* localgroup = "local";
+    char* remotegroup = "remote";
+    zyre_join (local, localgroup);
+    zyre_join (remote, remotegroup);
 
     //  Give time for them to interconnect
     zclock_sleep (100);
@@ -136,6 +146,11 @@ int main(int argc, char *argv[]) {
                 printf ("[%s] %s %s %s <headers> %s\n", self, event, peerid, name, address);
                 char* type = zyre_peer_header_value(remote, peerid, "type");
                 printf ("[%s] %s has type %s\n",self, name, type);
+                // Welcome local peer by sending him a peer list
+		char *peerlist = generate_peers(remote, config);
+		zyre_whispers(local, peerid, "%s", peerlist);
+                printf ("[%s] Welcomed %s by sending peer list: %s\n", self, name, peerlist);
+                zstr_free(&peerlist);
                 zstr_free(&peerid);
                 zstr_free(&name);
                 zframe_destroy(&headers_packed);
@@ -160,12 +175,35 @@ int main(int argc, char *argv[]) {
                 json_msg_t *result = (json_msg_t *) zmalloc (sizeof (json_msg_t));
                 decode_json(message, result);
                 printf ("[%s] message type %s\n", self, result->type);
-		zyre_shouts(remote, "SHERPALKU", "%s", message);        
-                if (streq (result->type, "peers"))
-			zyre_whispers(local, peerid, "%s", generate_peers(remote, config));
+		zyre_shouts(remote, "", "%s", message);        
+                if (streq (result->type, "peers")) {
+			char *peerlist = generate_peers(remote, config);
+			zyre_whispers(local, peerid, "%s", peerlist);
+			printf ("[%s] sent peerlist to %s as reply to peers message: %s\n", self, name, peerlist);
+			zstr_free(&peerlist);
+		}
                 zstr_free(&peerid);
                 zstr_free(&name);
                 zstr_free(&group);
+            }
+            else if (streq (event, "WHISPER")) {
+                assert (zmsg_size(msg) == 3);
+                char *peerid = zmsg_popstr (msg);
+                char *name = zmsg_popstr (msg);
+                char *message = zmsg_popstr (msg);
+                printf ("[%s] %s %s %s %s\n", self, event, peerid, name, message);
+                json_msg_t *result = (json_msg_t *) zmalloc (sizeof (json_msg_t));
+                decode_json(message, result);
+                printf ("[%s] message type %s\n", self, result->type);
+		zyre_shouts(remote, "", "%s", message);        
+                if (streq (result->type, "peers")) {
+			char *peerlist = generate_peers(remote, config);
+			zyre_whispers(local, peerid, "%s", peerlist);
+			printf ("[%s] sent peerlist to %s as reply to peers message: %s\n", self, name, peerlist);
+			zstr_free(&peerlist);
+		}
+                zstr_free(&peerid);
+                zstr_free(&name);
             }
             else if (streq (event, "JOIN")) {
                 assert (zmsg_size(msg) == 3);
@@ -203,6 +241,11 @@ int main(int argc, char *argv[]) {
                 printf ("[%s] %s %s %s <headers> %s\n", self, event, peerid, name, address);
                 char* type = zyre_peer_header_value(remote, peerid, "type");
                 printf ("[%s] %s has type %s\n",self, name, type);
+	        // Update local group with new peer list
+                char *peerlist = generate_peers(remote, config);
+		zyre_shouts(local, localgroup, "%s", peerlist);
+		printf ("[%s] sent updated peerlist to local group: %s\n", self, peerlist);
+		zstr_free(&peerlist);
                 zstr_free(&peerid);
                 zstr_free(&name);
                 zframe_destroy(&headers_packed);
@@ -214,6 +257,11 @@ int main(int argc, char *argv[]) {
                 char *peerid = zmsg_popstr (msg);
                 char *name = zmsg_popstr (msg);
                 printf ("[%s] %s %s %s\n", self, event, peerid, name);
+	        // Update local group with new peer list
+                char *peerlist = generate_peers(remote, config);
+		zyre_shouts(local, localgroup, "%s", peerlist);
+		printf ("[%s] sent updated peerlist to local group: %s\n", self, peerlist);
+		zstr_free(&peerlist);
                 zstr_free(&peerid);
                 zstr_free(&name);
             }
