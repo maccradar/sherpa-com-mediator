@@ -38,14 +38,14 @@ int main(int argc, char *argv[]) {
     zyre_set_verbose (local);
     
     int rc;
-    //rc = zyre_set_endpoint (local, "ipc://%s-local", self);
-    //assert (rc == 0);
+    rc = zyre_set_endpoint (local, "ipc://%s-local", self);
+    assert (rc == 0);
     //  Set up gossip network for this node
-    //zyre_gossip_connect (local, "ipc://%s-hub", hub);
+    zyre_gossip_connect (local, "ipc://%s-hub", hub);
     rc = zyre_start (local);
     assert (rc == 0);
 
-    zyre_join (local, "remote");
+    zyre_join (local, "local");
 
     if (verbose)
         zyre_dump (local);
@@ -59,7 +59,7 @@ int main(int argc, char *argv[]) {
             zmsg_t *msg = zmsg_recv (which);
 	    if (!msg) {
 	        printf("[%s] interrupted!\n", self); 
-	        return;
+	        return -1;
             }
 
             char *event = zmsg_popstr (msg);
