@@ -137,3 +137,6 @@ Only update the fields that are specified.
 - handshake on group name between proxies
 - teams should get a group assigned during delegation
 - create a team based on list of peerids
+- synchronization of clocks
+- query language to query the world model
+- confirmation that the TST is distributed
