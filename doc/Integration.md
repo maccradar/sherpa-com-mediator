@@ -127,7 +127,7 @@ Create team:
    model: uri
    type: create-team
    payload: { team: <team-name>,
-              [ <peerid>, ...]
+              members: [ <peerid>, ...]
             }
 }
 

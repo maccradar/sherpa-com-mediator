@@ -26,6 +26,31 @@ void decode_json(char* message, json_msg_t *result) {
     json_decref(root);
 }
 
+void send_join(zyre_t *remote, const char *peerid, json_t *payload) {
+    json_t *root;
+    root = json_object(); 
+    json_object_set(root, "metamodel", json_string("sherpa_mgs"));
+    json_object_set(root, "model", json_string("http://kul/join-team.json"));
+    json_object_set(root, "type", json_string("join-team"));
+    json_object_set(root, "payload", payload);
+    zyre_whispers(remote, peerid, "%s", json_dumps(root, JSON_ENCODE_ANY));
+}
+
+void create_team(zyre_t *remote, char *payload) {
+    json_error_t error;
+    json_t *root = json_loads(payload, 0, &error);
+    if(root) {
+        json_t *members = json_object_get(root,"members");
+	size_t index;
+	json_t *value;
+
+	json_array_foreach(members, index, value) {
+    	/* block of code that uses index and value */
+	      send_join(remote, json_string_value(value), json_object_get(root, "team"));
+	}
+    }
+}
+
 char* generate_peers(zyre_t *remote, json_t *config) {
     json_t *root;
     root = json_object(); 
@@ -207,7 +232,8 @@ int main(int argc, char *argv[]) {
 			zyre_whispers(local, peerid, "%s", peerlist);
 			printf ("[%s] sent peerlist to %s as reply to peers message: %s\n", self, name, peerlist);
 			zstr_free(&peerlist);
-		}
+		} else if (streq (result->type, "create-team"))
+			create_team(remote, result->payload);
                 zstr_free(&peerid);
                 zstr_free(&name);
             }
@@ -291,6 +317,22 @@ int main(int argc, char *argv[]) {
                 zstr_free(&peerid);
                 zstr_free(&name);
                 zstr_free(&group);
+            }
+            else if (streq (event, "WHISPER")) {
+                assert (zmsg_size(msg) == 3);
+                char *peerid = zmsg_popstr (msg);
+                char *name = zmsg_popstr (msg);
+                char *message = zmsg_popstr (msg);
+                printf ("[%s] %s %s %s %s\n", self, event, peerid, name, message);
+                json_msg_t *result = (json_msg_t *) zmalloc (sizeof (json_msg_t));
+                decode_json(message, result);
+                printf ("[%s] message type %s\n", self, result->type);
+                if(streq(result->type, "join-team")) {
+                    printf("[%s] joining team %s\n", self, result->payload);
+		    zyre_join(remote, result->payload);
+		}
+ 	        zstr_free(&peerid);
+                zstr_free(&name);
             }
             else if (streq (event, "JOIN")) {
                 assert (zmsg_size(msg) == 3);
