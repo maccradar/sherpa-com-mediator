@@ -1,4 +1,10 @@
-## Preliminary protocol from LKU-KUL Integration meeting in Leuven 2 July to 8 July 
+## Protocol from LKU-KUL Integration meeting in Leuven 2 July to 8 July 
+
+### Introduction
+
+The purpose of this meeting was to desing and implement the
+communication part of the SHERPA project related to the work done by
+LKU and KUL.
 
 Participants:
 
