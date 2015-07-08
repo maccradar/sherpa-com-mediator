@@ -75,7 +75,8 @@ char* generate_peers(zyre_t *remote, json_t *config) {
         const char *key;
         json_t *value;
         json_t *headers = json_object();
-        json_object_foreach(config, key, value) {
+        json_object_set(headers, "peerid", json_string(peer));
+	json_object_foreach(config, key, value) {
             /* block of code that uses key and value */
             char * header_value = zyre_peer_header_value(remote, peer, key);
             // Try to parse an array
@@ -127,7 +128,8 @@ int main(int argc, char *argv[]) {
     assert (local); 
     zyre_t *remote = zyre_new (self);
     assert (remote);
-    
+    printf("[%s] my remote UUID: %s\n", self, zyre_uuid(remote));
+    json_object_set(config, "peerid", json_string(zyre_uuid(remote)));   
     /* config is a JSON object */ 
     const char *key;
     json_t *value;
