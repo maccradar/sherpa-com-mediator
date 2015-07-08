@@ -16,15 +16,9 @@ Participants:
 - Use Zyre version 1.0
 - ZeroMQ version 4.0
 - CZMQ version 4.0
-- Payload is opaque to communication proxy (but not for all message types...) but it is a JSON structure.
-- How to handle updates:
-    - Local state updates
-    - Local WM receives update message on local group
-    - At its own frequency, local WM sends collection of updates to Proxy
-    - Proxy forwards message to remote
-    - Remote Proxy receives forwarded message, unpacks payload and puts it on its local group
-- Payload should be typed so entities can check if this payload is relevant for them.
-  There is a "type" and "payload" (json) field in the proxy message payload.
+- Communication is split into:
+    - Local group (for now: com proxy, delegation framework, and world model) using "gossip" via IPC to keep communication local
+    - Remote group (between proxies), i.e., each robot is represented by one proxy
 - One proxy per robot, each proxy loads configuration file (JSON) with:
   {
     short-name: string,
@@ -33,15 +27,21 @@ Participants:
     capabilities: list of strings
   }
 - Proxy adds configuration file to header 
-- Local group (between proxy and delegation framework and world model) is "local"
-- Remote group (between proxies) is "remote"
-- Envelope is always proxy related
+- How to handle (TST) updates:
+    - Local state updates
+    - Local WM receives update message on local group
+    - At its own frequency, local WM sends collection of updates to Proxy
+    - Proxy forwards message to remote
+    - Remote Proxy receives forwarded message, unpacks payload and puts it on its local group
+- Payload should be typed so entities can check if this payload is relevant for them. There is a "type" and "payload" (json) field in the proxy message payload.
+- Payload is opaque to communication proxy (but not for all message types...) but it is a JSON structure.
+- Envelope is always proxy related, i.e., proxy is throwing away envelope before sending msg
 - when new peers arrive, proxy shouts "peer-list"
-- when local entity whispers "peers", proxy whisers "peer-list" to that entity
+- when local entity whispers "peers", proxy whispers "peer-list" to that entity
 
-### Communication within one platform
+### Communication within one platform (local group)
 - ROS node running Delegation code connecting locally through gossip
-- Proxy local node binding locally through gossip
+- Proxy local node binding locally through gossip 
 - Proxy remote node connecting to remote network
 - World Model local node connecting locally through gossip
 - Local nodes join SHERPA group
@@ -55,8 +55,7 @@ Participants:
 - type: STRING
 - payload: JSON subpart
 
-### Payload structure for communication envelopte type "forward" and "forward-all" and maybe
-the tree distribution and tree creation types:
+### Payload structure for communication envelopte type "forward" and "forward-all" and maybe the tree distribution and tree creation types:
 
 - type: STRING
 - language: STRING
@@ -96,8 +95,9 @@ Requests all peers known to Proxy/WM
 List of all known peers
 {
   metamodel: sherpa_msgs
-  model: peer-list
-  data: {list of peers}
+  model: uri
+  type: peer-list
+  payload: {list of peers}
 }
 
 The contained msg is forwarded to the indicated peer via whisper by the proxy
@@ -178,10 +178,18 @@ Only update the fields that are specified.
 - Release the first version of the proxy
 - Release the first version of the world model
 
+### Test cases
+- WM-TST integration:
+    - setup three WMs, one receives TST and distributes it to the others, they output TST
+    - same as above, but the remote WMs respond with TST updates that need to be distributed and the delegation framework needs to be notified of these changes
+- Communication: (see above)
+    - forward
+    - forward-all
+    - peers
+
 ### BUGS
 
-- payload in envelope is not a char *, so gossip_proxy.c do not work since it tried to unpack
-  to the wrong structure.
+- payload in envelope is not a char *, so gossip_proxy.c do not work since it tried to unpack to the wrong structure.
 
 - Not getting the local peer on the peer list
 
