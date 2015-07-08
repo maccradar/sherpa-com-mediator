@@ -1,4 +1,4 @@
-## Protocol from LKU-KUL Integration meeting in Leuven 2 July to 8 July 
+## Protocol from LKU-KUL Sherpa Integration meeting in Leuven 2 July to 8 July 
 
 ### Introduction
 
