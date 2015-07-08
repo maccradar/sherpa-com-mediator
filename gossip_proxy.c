@@ -69,6 +69,7 @@ char* generate_peers(zyre_t *remote, json_t *config) {
      
     zlist_t * peers = zyre_peers(remote);
     char *peer = zlist_first (peers);
+    
     while(peer != NULL) {
         /* config is a JSON object */ 
         const char *key;
@@ -88,6 +89,9 @@ char* generate_peers(zyre_t *remote, json_t *config) {
         json_array_append(payload, headers);
         peer = zlist_next (peers);
     }
+    // Add my own headers as well
+    json_array_append(payload, config);
+   	
     return json_dumps(root, JSON_ENCODE_ANY);
 }
 json_t * load_config_file(char* file) {
