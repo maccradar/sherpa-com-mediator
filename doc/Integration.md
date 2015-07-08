@@ -10,7 +10,7 @@ Participants:
 - Use Zyre version 1.0
 - ZeroMQ version 4.0
 - CZMQ version 4.0
-- Payload is opaque to communication proxy (but not for all message types...)
+- Payload is opaque to communication proxy (but not for all message types...). It is a string.
 - How to handle updates:
     - Local state updates
     - Local WM receives update message on local group
@@ -18,7 +18,7 @@ Participants:
     - Proxy forwards message to remote
     - Remote Proxy receives forwarded message, unpacks payload and puts it on its local group
 - Payload should be typed so entities can check if this payload is relevant for them.
-  There is a "type" and "payload" field in the proxy message payload.
+  There is a "type" and "payload" (json) field in the proxy message payload.
 - One proxy per robot, each proxy loads configuration file (JSON) with:
   {
     short-name: string,
@@ -46,8 +46,9 @@ Participants:
 ### Payload structure:
 
 Typical ROS message:
-- type: to-topic
-- payload: PAYLOAD
+- type: "to-topic"
+- payload: STRING
+- payload-language: "JSON"
 
 Example PAYLOAD:
 - topic: /fipa_acl_message
@@ -62,8 +63,7 @@ Possible values for type: to-topic, update-execution-tst-node, execution-tst, ..
 - group-name: SHERPA
 - short-name: uav0   (WHISPER)
 - peerid: ...
-- topic-name:
-- payload: Some payload
+- payload: Some payload as a string
 
 Requests all peers known to Proxy/WM
 {
@@ -160,5 +160,5 @@ Only update the fields that are specified.
 
 ### BUGS
 
-- payload in envelope is not a char *, so gossip_proxy.c do not work since it trie to unpack
+- payload in envelope is not a char *, so gossip_proxy.c do not work since it tried to unpack
   to the wrong structure.
