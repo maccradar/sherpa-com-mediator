@@ -1,11 +1,18 @@
 #include <zyre.h>
 #include <jansson.h>
 
+typedef struct _json_payload_t {
+  char *type;
+  char *language;
+  char *content;
+} json_payload_t;
+
 typedef struct _json_msg_t {
     char *metamodel;
     char *model;
     char *type;
-    char *payload;
+    json_payload_t payload;
+  //  char *payload;
 } json_msg_t;
 
 void decode_json(char* message, json_msg_t *result) {
