@@ -10,7 +10,7 @@ Participants:
 - Use Zyre version 1.0
 - ZeroMQ version 4.0
 - CZMQ version 4.0
-- Payload is opaque to communication proxy (but not for all message types...). It is a string.
+- Payload is opaque to communication proxy (but not for all message types...) but it is a JSON structure.
 - How to handle updates:
     - Local state updates
     - Local WM receives update message on local group
@@ -42,19 +42,32 @@ Participants:
 - Nearly all local communication uses SHOUT
 - Response to peers message is a WHISPER
 
+### Proxy envelope structure:
+
+- metamodel: STRING
+- model: STRING
+- type: STRING
+- payload: JSON subpart
 
 ### Payload structure:
 
-Typical ROS message:
-- type: "to-topic"
-- payload: STRING
-- payload-language: "JSON"
+- type: STRING
+- language: STRING
+- content: STRING
 
-Example PAYLOAD:
+Example payload:
+
+- type: to-topic
+- language: "JSON"
+- content: string rep of a JSON message
+
+Example Content (JSON sent as string):
 - topic: /fipa_acl_message
 - msg: ...
 
-Possible values for type: to-topic, update-execution-tst-node, execution-tst, ...
+Possible values for envelope type: forward, forward-all, update-execution-tst-node, execution-tst, ...
+
+Possible values for payload type: to-topic, update-execution-tst-node, execution-tst, ...
 
 ### Encoding ROS things to JSON
 
@@ -63,7 +76,7 @@ Possible values for type: to-topic, update-execution-tst-node, execution-tst, ..
 - group-name: SHERPA
 - short-name: uav0   (WHISPER)
 - peerid: ...
-- payload: Some payload as a string
+- payload: ...
 
 Requests all peers known to Proxy/WM
 {
