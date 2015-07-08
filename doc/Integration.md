@@ -181,3 +181,6 @@ Only update the fields that are specified.
 
 - payload in envelope is not a char *, so gossip_proxy.c do not work since it tried to unpack
   to the wrong structure.
+
+- Not getting the local peer on the peer list
+
