@@ -55,7 +55,8 @@ Participants:
 - type: STRING
 - payload: JSON subpart
 
-### Payload structure:
+### Payload structure for communication envelopte type "forward" and "forward-all" and maybe
+the tree distribution and tree creation types:
 
 - type: STRING
 - language: STRING
