@@ -2,7 +2,7 @@
 
 ### Introduction
 
-The purpose of this meeting was to desing and implement the
+The purpose of this meeting was to design and implement the
 communication part of the SHERPA project related to the work done by
 LKU and KUL.
 
@@ -13,9 +13,9 @@ Participants:
 - Nico Huebel (KUL)
 
 ### Agreements
-- Use Zyre version 1.0
-- ZeroMQ version 4.0
-- CZMQ version 4.0
+- Use Zyre version v1.0.0 on github (tag)
+- ZeroMQ version 4.1.2
+- CZMQ version 3.0.2
 - Communication is split into:
     - Local group (for now: com proxy, delegation framework, and world model) using "gossip" via IPC to keep communication local
     - Remote group (between proxies), i.e., each robot is represented by one proxy
@@ -34,7 +34,7 @@ Participants:
     - Proxy forwards message to remote
     - Remote Proxy receives forwarded message, unpacks payload and puts it on its local group
 - Payload should be typed so entities can check if this payload is relevant for them. There is a "type" and "payload" (json) field in the proxy message payload.
-- Payload is opaque to communication proxy (but not for all message types...) but it is a JSON structure.
+- Payload is opaque to communication proxy for forward and forward-all and it is a JSON structure.
 - Envelope is always proxy related, i.e., proxy is throwing away envelope before sending msg
 - when new peers arrive, proxy shouts "peer-list"
 - when local entity whispers "peers", proxy whispers "peer-list" to that entity
