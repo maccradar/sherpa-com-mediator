@@ -1,10 +1,17 @@
 #include <zyre.h>
 #include <jansson.h>
 
+typedef struct _json_payload_t {
+  char *type;
+  char *language;
+  char *content;
+} json_payload_t;
+
 typedef struct _json_msg_t {
     char *metamodel;
     char *model;
     char *type;
+  //    json_payload_t payload;
     char *payload;
 } json_msg_t;
 
@@ -21,7 +28,8 @@ void decode_json(char* message, json_msg_t *result) {
     result->metamodel = strdup(json_string_value(json_object_get(root, "metamodel")));
     result->model = strdup(json_string_value(json_object_get(root, "model")));
     result->type = strdup(json_string_value(json_object_get(root, "type")));
-    result->payload = strdup(json_string_value(json_object_get(root, "payload")));
+    json_t * payload = json_object_get(root, "payload");
+    //    result->payload = strdup(json_string_value());
 
     json_decref(root);
 }
