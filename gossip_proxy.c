@@ -40,7 +40,10 @@ void send_join(zyre_t *remote, const char *peerid, json_t *payload) {
     json_object_set(root, "model", json_string("http://kul/join-team.json"));
     json_object_set(root, "type", json_string("join-team"));
     json_object_set(root, "payload", payload);
-    zyre_whispers(remote, peerid, "%s", json_dumps(root, JSON_ENCODE_ANY));
+    if(streq(peerid, zyre_uuid(remote)))
+	zyre_join(remote, json_string_value(payload));
+    else 
+    	zyre_whispers(remote, peerid, "%s", json_dumps(root, JSON_ENCODE_ANY));
 }
 
 void create_team(zyre_t *remote, char *payload) {
