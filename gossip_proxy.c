@@ -218,10 +218,10 @@ int main(int argc, char *argv[]) {
 			zyre_whispers(local, peerid, "%s", peerlist);
 			printf ("[%s] sent peerlist to %s as reply to peers message: %s\n", self, name, peerlist);
 			zstr_free(&peerlist);
-		} else (streq (result->type, "forward-all")) {
+		} else if (streq (result->type, "forward-all")) {
 			zyre_shouts(remote, remotegroup, "%s", message);        
-		} else (streq (result->type, "forward")) {
-                } else (streq (result->type, "create-team")) {
+		} else if (streq (result->type, "forward")) {
+                } else if (streq (result->type, "create-team")) {
 			create_team(remote, result->payload);
 		}
                 zstr_free(&peerid);
@@ -325,7 +325,10 @@ int main(int argc, char *argv[]) {
                 json_msg_t *result = (json_msg_t *) zmalloc (sizeof (json_msg_t));
                 decode_json(message, result);
                 printf ("[%s] message type %s\n", self, result->type);
-                zstr_free(&peerid);
+                if(streq(result->type, "forward-all")) {
+			zyre_shouts(local, localgroup, "%s", result->payload);
+		}
+		zstr_free(&peerid);
                 zstr_free(&name);
                 zstr_free(&group);
             }
