@@ -1,6 +1,0 @@
-{
-    "short-name": "<shortname>",
-    "long-name": "<longname>",
-    "type": "wasp",
-    "capabilities": ["flyto", "scan"]
-}

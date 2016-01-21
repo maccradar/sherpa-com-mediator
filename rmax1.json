@@ -1,7 +1,0 @@
-{
-    "short-name": "RMAX1",
-    "long-name": "http://lku/rmax1",
-    "type": "hawk",
-    "capabilities": ["flyto", "scan"],
-    "gossip": true
-}

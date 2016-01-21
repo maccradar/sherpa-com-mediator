@@ -1,6 +1,0 @@
-{
-    "short-name": "rover1",
-    "long-name": "http://kul/rover1",
-    "type": "donkey",
-    "capabilities": ["charge", "moveto"]
-}

@@ -1,4 +1,4 @@
-all: gossip_client gossip_proxy
+all: sherpa_comm_mediator local_component
 
 % : %.c
-	gcc -ggdb $< -Irfsmbinding -I/usr/include/lua5.1 -Linstall/lib -lczmq -lzmq -lzyre -ljansson -lcurl -o $@
+	gcc -ggdb $< -Linstall/lib -lczmq -lzmq -lzyre -ljansson -luuid -o $@

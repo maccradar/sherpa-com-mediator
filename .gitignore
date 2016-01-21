@@ -6,6 +6,7 @@
 
 # Ignore swap files
 *.swp
+*swp
 
 # Unignore all dirs
 !*/
@@ -16,3 +17,10 @@
 # Ignore build and install dirs
 build/
 install/
+
+# Ignore example dir with old code
+examples/
+
+# Ignore eclipse project files
+.project
+.cproject

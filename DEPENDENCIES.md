@@ -1,12 +1,5 @@
 # Dependencies
 
-## rfsm-json
-
-```sh
-apt-get install liblua5.1-json luarocks
-luarocks install luasocket
-```
-
 ## ZMQ / CZMQ
 
 ```sh
