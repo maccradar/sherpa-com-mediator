@@ -18,8 +18,8 @@
 build/
 install/
 
-# Ignore example dir with old code
-examples/
+# Ignore old code
+attic/
 
 # Ignore eclipse project files
 .project
