@@ -37,6 +37,131 @@ typedef struct _send_msg_request_t {
 	const char *msg; // payload+metadata
 } send_msg_request_t;
 
+// File transfer protocol
+#define CHUNK_SIZE 250000
+#define PIPELINE   10
+#define TARGET "/tmp/targetfile"
+
+static void
+client_actor (zsock_t *pipe, void *args)
+{
+    char* endpoint = (char*)args;
+    FILE *file = fopen (TARGET, "w");
+    assert (file);
+    zsock_t *dealer = zsock_new_dealer(endpoint);
+    
+    //  Up to this many chunks in transit
+    size_t credit = PIPELINE;
+    
+    size_t total = 0;       //  Total bytes received
+    size_t chunks = 0;      //  Total chunks received
+    size_t offset = 0;      //  Offset of next chunk request
+    
+    zsock_signal (pipe, 0);     //  Signal "ready" to caller
+    
+    bool terminated = false;
+    zpoller_t *poller = zpoller_new (pipe, NULL);
+    while (!terminated) {
+        void *which = zpoller_wait (poller, 1);
+        if (which == pipe) {
+            zmsg_t *msg = zmsg_recv (which);
+            if (!msg)
+                break;              //  Interrupted
+            char *command = zmsg_popstr (msg);
+            if (streq (command, "$TERM"))
+                terminated = true;
+        }
+        while (credit) {
+            //  Ask for next chunk
+            zstr_sendm  (dealer, "fetch");
+            zstr_sendfm (dealer, "%ld", offset);
+            zstr_sendf  (dealer, "%ld", (long) CHUNK_SIZE);
+            offset += CHUNK_SIZE;
+            credit--;
+        }
+        zframe_t *chunk = zframe_recv (dealer);
+        if (!chunk)
+            break;              //  Shutting down, quit
+        chunks++;
+        credit++;
+        size_t size = zframe_size (chunk);
+        fwrite (zframe_data(chunk) , sizeof(char), size, file);
+        zframe_destroy (&chunk);
+        total += size;
+        if (size < CHUNK_SIZE)
+            break;//terminated = true;              //  Last chunk received; exit
+    } 
+    printf ("%zd chunks received, %zd bytes\n", chunks, total);
+    fclose(file);
+    zstr_send (pipe, "OK");
+    zpoller_destroy(&poller);
+    zsock_destroy(&dealer);
+}
+
+//  The server thread waits for a chunk request from a client,
+//  reads that chunk and sends it back to the client:
+
+static void
+server_actor (zsock_t *pipe, void *args)
+{
+    char* filename = (char*)args;
+    FILE *file = fopen (filename, "r");
+    assert (file);
+
+    zsock_t *router = zsock_new_router ("tcp://*:6000");
+    //  We have two parts per message so HWM is PIPELINE * 2
+    zsocket_set_hwm (zsock_resolve(router), PIPELINE * 2);
+    
+    zsock_signal (pipe, 0);     //  Signal "ready" to caller
+    
+    bool terminated = false;
+    zpoller_t *poller = zpoller_new (pipe, NULL);
+    while (!terminated) {
+        void *which = zpoller_wait (poller, 1);
+        if (which == pipe) {
+            zmsg_t *msg = zmsg_recv (which);
+            if (!msg)
+                break;              //  Interrupted
+
+            char *command = zmsg_popstr (msg);
+            if (streq (command, "$TERM"))
+                terminated = true;
+        }    
+        //  First frame in each message is the sender identity
+        zframe_t *identity = zframe_recv (router);
+        if (!identity)
+            break;              //  Shutting down, quit
+            
+        //  Second frame is "fetch" command
+        char *command = zstr_recv (router);
+        assert (streq (command, "fetch"));
+        free (command);
+
+        //  Third frame is chunk offset in file
+        char *offset_str = zstr_recv (router);
+        size_t offset = atoi (offset_str);
+        free (offset_str);
+
+        //  Fourth frame is maximum chunk size
+        char *chunksz_str = zstr_recv (router);
+        size_t chunksz = atoi (chunksz_str);
+        free (chunksz_str);
+
+        //  Read chunk of data from file
+        fseek (file, offset, SEEK_SET);
+        byte *data = malloc (chunksz);
+        assert (data);
+
+        //  Send resulting chunk to client
+        size_t size = fread (data, 1, chunksz, file);
+        zframe_t *chunk = zframe_new (data, size);
+        zframe_send (&identity, router, ZFRAME_MORE);
+        zframe_send (&chunk, router, 0);
+    }
+    fclose (file);
+    zpoller_destroy(&poller);
+    zsock_destroy(&router);
+}
 
 ///////////////////////////////////////////////////
 // helper functions
@@ -161,8 +286,72 @@ void create_team(zyre_t *remote, char *payload) {
     }
     json_decref(root);
 }
-///////////////////////////////////////////////////
 */
+
+///////////////////////////////////////////////////
+// remote file query
+char* fetch_file(zyre_t *remote, json_t *config, json_msg_t *msg) {
+	/**
+	 * fetches a file from a remote location
+	 *
+	 * @param zyre_t* to the zyre network that should be queried
+	 * @param json_t* to the own header
+	 * @param json_msg_t* to the decoded zyre msg
+	 *
+	 * @return returns NULL if it fails and a json msg containing the local file path otherwise
+	 */
+	char *ret = NULL;
+	json_t *pl;
+	json_error_t error;
+	pl= json_loads(msg->payload,0,&error);
+	if(!pl) {
+		printf("Error parsing JSON payload! line %d: %s\n", error.line, error.text);
+		json_decref(pl);
+		return ret;
+	}
+    json_t *payload = json_object();
+    json_object_set(payload, "UID", json_object_get(pl,"UID"));
+    json_t *peer_list;
+    peer_list = json_array();
+    json_object_set(payload, "peer_list", peer_list);
+
+    zlist_t * peers = zyre_peers(remote);
+    char *peer = zlist_first (peers);
+
+    while(peer != NULL) {
+        /* config is a JSON object */
+        const char *key;
+        json_t *value;
+        json_t *headers = json_object();
+        json_object_set(headers, "peerid", json_string(peer));
+        json_object_foreach(config, key, value) {
+            /* block of code that uses key and value */
+            char * header_value = zyre_peer_header_value(remote, peer, key);
+            // Try to parse an array
+            json_error_t error;
+            json_t *header = json_loads(header_value,0,&error);
+            if(!header) {
+            	header = json_string(header_value);
+            }
+            json_object_set(headers, key, header);
+            json_decref(header);
+        }
+        json_array_append(peer_list, headers);
+        peer = zlist_next (peers);
+        json_decref(headers);
+        json_decref(value);
+    }
+    // Add my own headers as well
+    json_array_append(peer_list, config);
+
+    ret = encode_msg("sherpa_mgs","http://kul/peer-list.json","peer-list",payload);
+    json_decref(payload);
+    json_decref(peer_list);
+    json_decref(pl);
+    zlist_destroy(&peers);
+    return ret;
+}
+///////////////////////////////////////////////////
 // remote peer query
 
 char* generate_peer_list(zyre_t *remote, json_t *config, json_msg_t *msg) {
@@ -542,11 +731,13 @@ int main(int argc, char *argv[]) {
             			}
             			zstr_free(&peerlist);
 
-					} else if (streq (result->type, "send_remote")) {
-						// query for communication
-						send_remote(result, send_msgs, self, remotegroup, remote, local);
-					} else {
-	            		printf("[%s] Unknown msg type!",self);
+	        	} else if (streq (result->type, "send_remote")) {
+			        // query for communication
+			        send_remote(result, send_msgs, self, remotegroup, remote, local);
+			} else if (streq (result->type, "query_remote_file")) {
+                                query_file(result, send_msgs, self, remotegroup, remote, local);
+	            	} else {
+                        	printf("[%s] Unknown msg type!",self);
 	            	}
             		free(result);
             	} else {
