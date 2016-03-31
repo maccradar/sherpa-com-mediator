@@ -107,3 +107,32 @@ Return message: Type: peer-list
 ```
 * UID: UID of message that is used in communication back to requester. Needs to be unique for requester but not globally unique.
 * peer_list: array containing the UUIDs of all connected peers together with their header content
+
+### Type: query_remote_file
+Fetch a remote file, store it locally, and return local file path.
+Request message:
+```
+{
+  UID: 2147aba0-0d59-41ec-8531-f6787fe52b60,
+  URI: peer_id:/path/filename
+}
+```
+Return message to requesting mediator: Type: endpoint
+Return to setup the P2P connection for downloading the file.
+```
+{
+  UID: 2147aba0-0d59-41ec-8531-f6787fe52b60,
+  URI: host:port
+}
+```
+Return message to local component: Type: file_path
+Return the filepath where the file can be accessed locally.
+```
+{
+  UID: 2147aba0-0d59-41ec-8531-f6787fe52b60,
+  URI: local_path/filename
+}
+```
+* UID: UID of message that is used in communication back to requester. Needs to be unique for requester but not globally unique.
+* URI: needs to contain the peer_id from which the file can be downloaded and the file path at which the file is stored (git this URI from the SWM)
+* file_path: the path where the file has been stored locally
