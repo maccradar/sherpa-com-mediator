@@ -17,6 +17,7 @@ typedef struct _mediator_t {
     zlist_t *filter_list;
     zlist_t *send_msgs;
     bool verbose;
+    zpoller_t *poller;
 } mediator_t;    
 
 typedef struct _json_msg_t {
@@ -63,6 +64,7 @@ void mediator_destroy (mediator_t **self_p) {
         zyre_destroy (&self->remote);
         zlist_destroy (&self->send_msgs);
         zlist_destroy (&self->filter_list);
+        zpoller_destroy (&self->poller);
         free (self);
         *self_p = NULL;
     }
@@ -164,6 +166,9 @@ mediator_t * mediator_new (json_t *config) {
         zyre_dump (self->local);
         zyre_dump (self->remote);
     }
+
+    zpoller_t *poller =  zpoller_new (zyre_socket(self->local), zyre_socket(self->remote), NULL);
+    self->poller = poller;
 
     return self;
 }
@@ -1080,9 +1085,8 @@ int main(int argc, char *argv[]) {
     }
     mediator_t *self = mediator_new(config);
 
-    zpoller_t *poller =  zpoller_new (zyre_socket(self->local), zyre_socket(self->remote), NULL);
     while(!zsys_interrupted) {
-    	void *which = zpoller_wait (poller, ZMQ_POLL_MSEC);
+    	void *which = zpoller_wait (self->poller, ZMQ_POLL_MSEC);
         if (which == zyre_socket (self->local)) {
             printf("\n");
             printf("[%s] local data received!\n", self->shortname);
@@ -1142,18 +1146,6 @@ int main(int argc, char *argv[]) {
 
     }
 
-    // TODO: destroy the lists and their elements -> see bottom of http://czmq.zeromq.org/manual:zlist
-    /*free memory of all items from the query list
-        query_t it;
-        while(zlist_size (query_list) > 0){
-        	it = zlist_pop(query_list);
-        	free(it.UID);
-        	free(it.msg);
-        }*/
-    //zlist_destroy(send_msgs);
-    //zlist_destroy(filter_list);
-
-    zpoller_destroy (&poller);
 
     zyre_stop (self->remote);
     zyre_stop (self->local);
