@@ -18,6 +18,7 @@ typedef struct _mediator_t {
     zlist_t *send_msgs;
     bool verbose;
     zpoller_t *poller;
+    zhash_t *queries;
 } mediator_t;    
 
 typedef struct _json_msg_t {
@@ -170,6 +171,12 @@ mediator_t * mediator_new (json_t *config) {
     zpoller_t *poller =  zpoller_new (zyre_socket(self->local), zyre_socket(self->remote), NULL);
     self->poller = poller;
 
+    zhash_t *hash = zhash_new ();
+    if (!hash) {
+        mediator_destroy (&self);
+        return NULL;
+    }
+
     return self;
 }
 
@@ -266,16 +273,22 @@ client_actor (zsock_t *pipe, void *args)
 static void
 server_actor (zsock_t *pipe, void *args)
 {
-    char* filename = (char*)args;
+    // TODO: use JSON with parsed URI upfront?
+    char* uri = strdup((char*)args);
+    char* token;
+    token = strtok(uri, ":"); // Remove host/peerid
+    token = strtok(NULL, ":");
+    char* filename = strdup(token);
     FILE *file = fopen (filename, "r");
     assert (file);
-
-    zsock_t *router = zsock_new_router ("tcp://*:6000");
+    // TODO: configure endpoint
+    zsock_t *router = zsock_new_router ("tcp://*:*");
     //  We have two parts per message so HWM is PIPELINE * 2
     zsocket_set_hwm (zsock_resolve(router), PIPELINE * 2);
     
     zsock_signal (pipe, 0);     //  Signal "ready" to caller
-    
+    zstr_send (pipe, zsock_endpoint(router));
+   
     bool terminated = false;
     zpoller_t *poller = zpoller_new (pipe, NULL);
     while (!terminated) {
@@ -761,6 +774,66 @@ void handle_remote_stop (mediator_t *self, zmsg_t *msg) {
 	zstr_free(&name);
 }
 
+void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peerid) {
+	// if in list of recipients, send acknowledgment
+	json_t *req;
+	json_error_t error;
+	req = json_loads(result->payload, 0, &error);
+	if(!req) {
+		printf("Error parsing JSON payload!\n");
+		return;
+	} else {
+		json_t *rec;
+		rec = json_object_get(req,"recipients");
+		if(!json_is_array(rec)) {
+			printf("[%s] receivers is not a JSON array!", self->shortname);
+		} else {
+			size_t index;
+			json_t *value;
+			json_array_foreach(rec, index, value) {
+				if (streq(json_string_value(value),zyre_uuid(self->remote))) {
+					json_t *pl;
+					pl = json_object();
+					json_object_set(pl, "UID", json_object_get(req,"UID"));
+					json_object_set(pl, "ID_receiver", json_string(zyre_uuid(self->remote)));
+					zyre_whispers(self->local, peerid, "%s", encode_msg("sherpa_mgs","http://kul/communication_ack.json","communication_ack",pl));
+					json_decref(pl);
+					break;
+				}
+			}
+		}
+		json_decref(rec);
+		// filter by msg requester+uid to see if this msg has already been forwarded
+		filter_list_item_t *it = zlist_first(self->filter_list);
+		int flag = 0;
+		while (it != NULL) {
+			if (streq(it->sender,peerid) && streq(it->msg_UID,json_string_value(json_object_get(req,"UID")))) {
+				flag = 1;
+				break;
+			}
+			it = zlist_next(self->filter_list);
+		}
+		if (flag == 0) {
+			// if not in list, forward msg to local network
+			zyre_shouts(self->local, self->localgroup, "%s", result->payload);
+			// push this msg into filter list
+			filter_list_item_t *tmp;
+			tmp->msg_UID = json_string_value(json_object_get(req,"UID"));
+			tmp->sender = strdup(peerid);
+			assert(tmp->sender);
+			struct timespec ts;
+			if (clock_gettime(CLOCK_MONOTONIC,&ts)) {
+				printf("[%s] Could not assign time stamp!\n",self->shortname);
+			} else {
+				tmp->ts = ts;
+				zlist_push(self->filter_list,tmp);
+			}
+		}
+		json_decref(req);
+	}
+	json_decref(req);
+}
+
 void handle_remote_shout (mediator_t *self, zmsg_t *msg) {
 	assert (zmsg_size(msg) == 4);
 	char *peerid = zmsg_popstr (msg);
@@ -772,67 +845,11 @@ void handle_remote_shout (mediator_t *self, zmsg_t *msg) {
 	if (decode_json(message, result)==0) {
 		printf ("[%s] message type %s\n", self->shortname, result->type);
 		if (streq (result->type, "send_remote")) {
-			// if in list of recipients, send acknowledgment
-			json_t *req;
-			json_error_t error;
-			req = json_loads(result->payload, 0, &error);
-			if(!req) {
-				printf("Error parsing JSON payload!\n");
-				return;
-			} else {
-				json_t *rec;
-				rec = json_object_get(req,"recipients");
-				if(!json_is_array(rec)) {
-					printf("[%s] receivers is not a JSON array!", self->shortname);
-				} else {
-					size_t index;
-					json_t *value;
-					json_array_foreach(rec, index, value) {
-						if (streq(json_string_value(value),zyre_uuid(self->remote))) {
-							json_t *pl;
-							pl = json_object();
-							json_object_set(pl, "UID", json_object_get(req,"UID"));
-							json_object_set(pl, "ID_receiver", json_string(zyre_uuid(self->remote)));
-							zyre_whispers(self->local, peerid, "%s", encode_msg("sherpa_mgs","http://kul/communication_ack.json","communication_ack",pl));
-							json_decref(pl);
-							break;
-						}
-					}
-				}
-				json_decref(rec);
-				// filter by msg requester+uid to see if this msg has already been forwarded
-				filter_list_item_t *it = zlist_first(self->filter_list);
-				int flag = 0;
-				while (it != NULL) {
-					if (streq(it->sender,peerid) && streq(it->msg_UID,json_string_value(json_object_get(req,"UID")))) {
-						flag = 1;
-						break;
-					}
-					it = zlist_next(self->filter_list);
-				}
-				if (flag == 0) {
-					// if not in list, forward msg to local network
-					zyre_shouts(self->local, self->localgroup, "%s", result->payload);
-					// push this msg into filter list
-					filter_list_item_t *tmp;
-					tmp->msg_UID = json_string_value(json_object_get(req,"UID"));
-					tmp->sender = strdup(peerid);
-					assert(tmp->sender);
-					struct timespec ts;
-					if (clock_gettime(CLOCK_MONOTONIC,&ts)) {
-						printf("[%s] Could not assign time stamp!\n",self->shortname);
-					} else {
-						tmp->ts = ts;
-						zlist_push(self->filter_list,tmp);
-					}
-				}
-				json_decref(req);
-			}
-			json_decref(req);
+			handle_remote_send_remote(self, result, peerid);	
 		}
-			} else {
-				printf ("[%s] message could not be decoded\n", self->shortname);
-			}
+	} else {
+		printf ("[%s] message could not be decoded\n", self->shortname);
+	}
 	zstr_free(&peerid);
 	zstr_free(&name);
 	zstr_free(&group);
@@ -872,7 +889,62 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 			}
 		} else if (streq (result->type, "query_remote_file")) {
 			//TODO: check if URI is locally available: 1) check if peerid matches, 2) check if file exists
-			//file_endpoint(result, send_msgs, self, remotegroup, remote, self->local);
+			json_t *req;
+			json_error_t error;
+			req = json_loads(result->payload, 0, &error);
+			if(!req) {
+				printf("Error parsing JSON payload!\n");
+				return;
+			} else {
+                   		const char* uid = json_string_value(json_object_get(req,"UID"));
+			    	int rc;
+                                zactor_t * file_server = zactor_new (server_actor, (char*)json_string_value(json_object_get(req, "URI")));
+				// wait for endpoint
+                                char* endpoint = zstr_recv(file_server);
+    				const char s[2] = ":";
+    				char *token;
+		    		token = strtok(endpoint, ":");
+		    		char* protocol = strdup(token);
+				token = strtok(NULL, ":");
+		    		char* host = strdup(token);
+		    		token = strtok(NULL, ":");
+		    		char* port = strdup(token);
+		    		while(token!=NULL)
+					token=strtok(NULL, ":");
+		    		if (streq(host,"//*")) // replace with hostname
+					sprintf(host,"//%s", zsys_hostname());
+		    		sprintf(endpoint,"%s:%s:%s", protocol, host, port);
+		    		printf("Endpoint: %s\n", endpoint);
+                                rc = zhash_insert (self->queries, uid, file_server);
+                                // Required?
+  				// zpoller_add(self->poller, file_server);
+				json_t *pl;
+				pl = json_object();
+				json_object_set(pl, "UID", json_object_get(req,"UID"));
+				json_object_set(pl, "URI", json_string(endpoint));
+				zyre_whispers(self->local, peerid, "%s", encode_msg("sherpa_mgs","http://kul/endpoint.json","endpoint",pl));
+                                free(token);
+				free(protocol);
+				free(host);
+				free(port);
+				free(endpoint); 
+			}
+		} else if (streq (result->type, "endpoint")) {
+			//TODO: check if the query UID matches
+			json_t *req;
+			json_error_t error;
+			req = json_loads(result->payload, 0, &error);
+			if(!req) {
+				printf("Error parsing JSON payload!\n");
+				return;
+			} else {
+                   		const char* uid = json_string_value(json_object_get(req,"UID"));
+			    	int rc;
+                                zactor_t * file_client = zactor_new (client_actor, (char*)json_string_value(json_object_get(req, "URI")));
+                                rc = zhash_insert (self->queries, uid, file_client);
+                                // Required to know when transfer is completed
+  				zpoller_add(self->poller, file_client);
+			}
 		} else {
 			printf ("[%s] unknown msg type\n", self->shortname);
 		}
@@ -1142,6 +1214,18 @@ int main(int argc, char *argv[]) {
 
             zstr_free (&event);
             zmsg_destroy (&msg);
+       } else {
+	    // Iterate query actors
+	    zactor_t* query = zhash_first(self->queries);
+            const char* uid;
+	    while (query != NULL) {
+                if (which == query) {
+                    uid = zhash_cursor(self->queries);
+		    break;
+	     	}
+	        query = zhash_next(self->queries);
+	    }
+             
        }
 
     }
