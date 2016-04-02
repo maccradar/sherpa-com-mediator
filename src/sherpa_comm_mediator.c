@@ -1225,7 +1225,8 @@ int main(int argc, char *argv[]) {
 	     	}
 	        query = zhash_next(self->queries);
 	    }
-             
+            zmg_t *msg = zmsg_recv(which);
+	    // TODO: do something with message.  
        }
 
     }
