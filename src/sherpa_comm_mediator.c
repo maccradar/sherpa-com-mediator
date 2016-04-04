@@ -80,9 +80,9 @@ mediator_t * mediator_new (json_t *config) {
     zyre_version (&major, &minor, &patch);
     if (major != ZYRE_VERSION_MAJOR)
         return NULL;
-    if (minor != ZYRE_VERSION_MINOR);
+    if (minor != ZYRE_VERSION_MINOR)
         return NULL;
-    if (patch != ZYRE_VERSION_PATCH);
+    if (patch != ZYRE_VERSION_PATCH)
         return NULL;
     self->config = config;
     //init list of send msg requests
@@ -91,6 +91,7 @@ mediator_t * mediator_new (json_t *config) {
         mediator_destroy (&self);
         return NULL;
     }
+
     //init list for filtering msg requests
     self->filter_list = zlist_new();
     if (!self->filter_list) {
@@ -99,7 +100,13 @@ mediator_t * mediator_new (json_t *config) {
     }
     self->shortname = json_string_value(json_object_get(config, "short-name"));
     self->verbose = json_is_true(json_object_get(config, "verbose"));
-     
+   
+    self->queries = zhash_new();
+    if (!self->queries) {
+        mediator_destroy (&self);
+        return NULL;
+    }
+ 
     //  Create two nodes: 
     //  - local gossip node for backend
     //  - remote udp node for frontend
@@ -1156,7 +1163,8 @@ int main(int argc, char *argv[]) {
       return -1;
     }
     mediator_t *self = mediator_new(config);
-
+    printf("[%s] mediator initialised!\n", self->shortname);
+    
     while(!zsys_interrupted) {
     	void *which = zpoller_wait (self->poller, ZMQ_POLL_MSEC);
         if (which == zyre_socket (self->local)) {
@@ -1225,8 +1233,10 @@ int main(int argc, char *argv[]) {
 	     	}
 	        query = zhash_next(self->queries);
 	    }
-            zmg_t *msg = zmsg_recv(which);
-	    // TODO: do something with message.  
+            if (query != NULL) {
+            	zmsg_t *msg = zmsg_recv(query);
+	        // TODO: do something with message.
+ 	    }  
        }
 
     }
