@@ -472,28 +472,28 @@ void create_team(zyre_t *remote, char *payload) {
 
 ///////////////////////////////////////////////////
 // remote file query
-char* query_remote_file(mediator_t *self, json_msg_t *msg) {
+void query_remote_file(mediator_t *self, json_msg_t *msg) {
 	/**
 	 * fetches a file from a remote location
 	 *
-	 * @param zyre_t* to the zyre network that should be queried
-	 * @param json_t* to the own header
+	 * @param mediator_t* to the mediator data strucure
 	 * @param json_msg_t* to the decoded zyre msg
-	 *
-	 * @return returns NULL if it fails and a json msg containing the local file path otherwise
 	 */
-	char *ret = NULL;
 	json_t *pl;
 	json_error_t error;
 	pl= json_loads(msg->payload,0,&error);
 	if(!pl) {
 		printf("Error parsing JSON payload! line %d: %s\n", error.line, error.text);
 		json_decref(pl);
-		return ret;
+		return;
 	}
     
-    //const char *uid = json_string_value(json_object_get(pl,"UID"));
-    char *uri = (char*)json_string_value(json_object_get(pl,"URI"));
+    char *uri = strdup((char*)json_string_value(json_object_get(pl,"URI")));
+    printf("[%s] query remote file with URI: %s\n", self->shortname, uri);
+    if (!uri) {
+       printf("[%s] URI not specified, ignoring query!\n", self->shortname); 
+       return;
+    }
     const char s[2] = ":";
     char *token;
     token = strtok(uri, s);
@@ -501,11 +501,10 @@ char* query_remote_file(mediator_t *self, json_msg_t *msg) {
     while( token != NULL ) { 
       token = strtok(NULL, s);
     }
-    //ret = json_dumps(msg, JSON_ENCODE_ANY);
-    //zyre_whispers(self->remote, peerid, "%s", ret);
-
+    printf("[%s] Sending whisper to %s\n", self->shortname, peerid);
+    zyre_whispers(self->remote, peerid, "%s", encode_msg("sherpa_mgs","http://kul/query_remote_file.json","query_remote_file",pl));
     json_decref(pl);
-    return ret;
+    
 }
 ///////////////////////////////////////////////////
 // remote peer query
@@ -921,7 +920,6 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 		    		if (streq(host,"//*")) // replace with hostname
 					sprintf(host,"//%s", zsys_hostname());
 		    		sprintf(endpoint,"%s:%s:%s", protocol, host, port);
-		    		printf("Endpoint: %s\n", endpoint);
                                 rc = zhash_insert (self->queries, uid, file_server);
                                 // Required?
   				// zpoller_add(self->poller, file_server);
@@ -929,7 +927,8 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 				pl = json_object();
 				json_object_set(pl, "UID", json_object_get(req,"UID"));
 				json_object_set(pl, "URI", json_string(endpoint));
-				zyre_whispers(self->local, peerid, "%s", encode_msg("sherpa_mgs","http://kul/endpoint.json","endpoint",pl));
+				printf("[%s] whispering server endpoint %s to peer %s\n", self->shortname,endpoint, peerid);
+				zyre_whispers(self->remote, peerid, "%s", encode_msg("sherpa_mgs","http://kul/endpoint.json","endpoint",pl));
                                 free(token);
 				free(protocol);
 				free(host);
