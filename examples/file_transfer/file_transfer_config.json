@@ -1,0 +1,10 @@
+{
+    "short-name": "file_transfer_comp",
+    "long-name": "<longname>",
+    "type": "file_transfer_comp",
+    "capabilities": ["file_transfer"],
+    "local_endpoint": "ipc:///tmp/local_test_com-local",
+    "gossip_endpoint": "ipc:///tmp/local-hub",
+    "timeout": 5000,
+    "uri": "DC8C7A256CA7432184657D9D010B72F3:./testdata"
+}
