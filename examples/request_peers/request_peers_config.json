@@ -1,0 +1,9 @@
+{
+    "short-name": "request_peers_comp",
+    "long-name": "<longname>",
+    "type": "request_peers_comp",
+    "capabilities": ["request_peers"],
+    "local_endpoint": "ipc:///tmp/local_test_com-local",
+    "gossip_endpoint": "ipc:///tmp/local-hub",
+    "timeout": 5000
+}

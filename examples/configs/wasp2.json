@@ -1,0 +1,8 @@
+{
+    "short-name": "wasp2",
+    "long-name": "<longname>",
+    "type": "wasp",
+    "capabilities": ["charge", "moveto"],
+    "local_endpoint": "ipc:///tmp/wasp2-local",
+    "gossip_endpoint": "ipc:///tmp/wasp2-local-hub"
+}

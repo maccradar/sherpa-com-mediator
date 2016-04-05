@@ -1,3 +1,0 @@
-- update data structures in defs.h to move to peer to peer network
-- add distributed logging service
-- integrate beacon discovery to proxy
