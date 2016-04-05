@@ -19,6 +19,8 @@ typedef struct _mediator_t {
     bool verbose;
     zpoller_t *poller;
     zhash_t *queries;
+    zlist_t *remote_query_list;
+    zlist_t *local_query_list;
 } mediator_t;    
 
 typedef struct _json_msg_t {
@@ -53,6 +55,7 @@ typedef struct _send_msg_request_t {
 
 typedef struct _query_t {
         const char *uid;
+        const char *requester;
         json_msg_t *msg;
         zactor_t *loop;
 } query_t;
@@ -65,6 +68,9 @@ void mediator_destroy (mediator_t **self_p) {
         zyre_destroy (&self->remote);
         zlist_destroy (&self->send_msgs);
         zlist_destroy (&self->filter_list);
+	zlist_destroy (&self->remote_query_list);
+ 	zlist_destroy (&self->local_query_list);
+	zhash_destroy (&self->queries);
         zpoller_destroy (&self->poller);
         free (self);
         *self_p = NULL;
@@ -98,6 +104,21 @@ mediator_t * mediator_new (json_t *config) {
         mediator_destroy (&self);
         return NULL;
     }
+
+    //init list for remote queries
+    self->remote_query_list = zlist_new();
+    if (!self->remote_query_list) {
+        mediator_destroy (&self);
+        return NULL;
+    }
+    
+    //init list for local queries
+    self->local_query_list = zlist_new();
+    if (!self->local_query_list) {
+        mediator_destroy (&self);
+        return NULL;
+    }
+
     self->shortname = json_string_value(json_object_get(config, "short-name"));
     self->verbose = json_is_true(json_object_get(config, "verbose"));
    
@@ -191,23 +212,19 @@ void query_destroy (query_t **self_p) {
         assert (self_p);
         if(*self_p) {
             query_t *self = *self_p;
-            zactor_destroy(&self->loop);
             free (self);
             *self_p = NULL;
         }
 }
 
-query_t * query_new (const char *uid, json_msg_t *msg, zactor_fn *loop, void *args) {
+query_t * query_new (const char *uid, const char *requester, json_msg_t *msg, zactor_t *loop) {
         query_t *self = (query_t *) zmalloc (sizeof (query_t));
         if (!self)
             return NULL;
         self->uid = uid;
+        self->requester = requester;
         self->msg = msg;
-        zactor_t *actor = zactor_new (loop, args);
-        if (!actor)
-            query_destroy (&self);
-            return NULL;
-        self->loop = actor;
+        self->loop = loop;
         
         return self;
 }
@@ -274,7 +291,8 @@ client_actor (zsock_t *pipe, void *args)
     // Query type
     zstr_sendm (pipe, "remote_file_done");
     zstr_sendm (pipe, peerid);
-    zstr_send (pipe, uid);
+    zstr_sendm (pipe, uid);
+    zstr_send (pipe, TARGET);
     
     zpoller_destroy(&poller);
     zsock_destroy(&dealer);
@@ -903,7 +921,8 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 				}
 			}
 		} else if (streq (result->type, "query_remote_file")) {
-			//TODO: check if URI is locally available: 1) check if peerid matches, 2) check if file exists
+			
+                        //TODO: check if URI is locally available: 1) check if peerid matches, 2) check if file exists
 			json_t *req;
 			json_error_t error;
 			req = json_loads(result->payload, 0, &error);
@@ -930,7 +949,10 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 					sprintf(host,"//%s", zsys_hostname());
 		    		sprintf(endpoint,"%s:%s:%s", protocol, host, port);
                                 rc = zhash_insert (self->queries, uid, file_server);
-                                // Required?
+                                
+                                // Add to remote query_list
+				query_t * q = query_new(uid, peerid, result, file_server);
+				zlist_append(self->remote_query_list, q);
   				zpoller_add(self->poller, file_server);
 				json_t *pl;
 				pl = json_object();
@@ -1071,7 +1093,18 @@ void handle_local_shout(mediator_t *self, zmsg_t *msg) {
 			// query for communication
 			send_remote(self, result, group);
 		} else if (streq (result->type, "query_remote_file")) {
-			query_remote_file(self, result);
+			json_t *req;
+			json_error_t error;
+			req = json_loads(result->payload, 0, &error);
+			if(!req) {
+				printf("Error parsing JSON payload!\n");
+				return;
+			} else {
+                   		const char* uid = json_string_value(json_object_get(req,"UID"));
+                        	query_t * q = query_new(uid, strdup(peerid), result, NULL);
+				zlist_append(self->local_query_list, q); 
+				query_remote_file(self, result);
+			}
 		} else {
 			printf("[%s] Unknown msg type!",self->shortname);
 		}
@@ -1287,6 +1320,7 @@ int main(int argc, char *argv[]) {
         	if (streq (query_type, "remote_file_done")) { // TODO: how to call it? Query causing this file client is called "endpoint"
 			char *peerid = zstr_recv (which);
 			char *recv_uid = zstr_recv (which);
+			char *file_path = zstr_recv (which);
  			assert(streq(uid, recv_uid));
      			printf("[%s] received remote_file_done from client_actor\n", self->shortname); 
   			zpoller_remove(self->poller, query);
@@ -1295,9 +1329,27 @@ int main(int argc, char *argv[]) {
 			json_t *pl;
 			pl = json_object();
 			json_object_set(pl, "UID", json_string(recv_uid));
-			printf("[%s] informing remote peerid %s that query %s is done\n", self->shortname, peerid, recv_uid);
+			printf("[%s] whispering remote peerid %s that query %s is done\n", self->shortname, peerid, recv_uid);
 			zyre_whispers(self->remote, peerid , "%s", encode_msg("sherpa_mgs","http://kul/remote_file_done.json","remote_file_done",pl));
-        		free (recv_uid);
+        		
+			json_object_set(pl, "URI", json_string(file_path));
+			// look up local requester
+			query_t *q = (query_t *) zlist_first(self->local_query_list);
+			char* requester = NULL;
+			while (q != NULL) {
+				if (streq(q->uid, recv_uid)) {
+					requester = strdup(q->requester);
+					break;
+				}
+				q = (query_t *) zlist_next(self->local_query_list);
+			}
+			if(requester != NULL) {
+				printf("[%s] whispering local peerid %s that file is located at %s\n", self->shortname, requester, file_path);
+				zyre_whispers(self->local, requester, "%s", encode_msg("sherpa_msgs", "http://kul/file_path.json", "file_path", pl));
+			} else {
+				printf("[%s] requester of local query %s not found!\n", self->shortname, recv_uid);
+			}
+			free (recv_uid);
 			json_decref(pl);
 		}
  	    }  
