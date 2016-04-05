@@ -221,7 +221,9 @@ query_t * query_new (const char *uid, json_msg_t *msg, zactor_fn *loop, void *ar
 static void
 client_actor (zsock_t *pipe, void *args)
 {
-    char* endpoint = (char*)args;
+    char* peerid = ((char**)args)[0];
+    char* uid = ((char**)args)[1];
+    char* endpoint = ((char**)args)[2];
     FILE *file = fopen (TARGET, "w");
     assert (file);
     zsock_t *dealer = zsock_new_dealer(endpoint);
@@ -269,7 +271,11 @@ client_actor (zsock_t *pipe, void *args)
     } 
     printf ("%zd chunks received, %zd bytes\n", chunks, total);
     fclose(file);
-    zstr_send (pipe, "OK");
+    // Query type
+    zstr_sendm (pipe, "remote_file_done");
+    zstr_sendm (pipe, peerid);
+    zstr_send (pipe, uid);
+    
     zpoller_destroy(&poller);
     zsock_destroy(&dealer);
 }
@@ -288,16 +294,17 @@ server_actor (zsock_t *pipe, void *args)
     char* filename = strdup(token);
     FILE *file = fopen (filename, "r");
     assert (file);
-    // TODO: configure endpoint
     zsock_t *router = zsock_new_router ("tcp://*:*");
+
     //  We have two parts per message so HWM is PIPELINE * 2
     zsocket_set_hwm (zsock_resolve(router), PIPELINE * 2);
     
     zsock_signal (pipe, 0);     //  Signal "ready" to caller
+    // Inform caller our endpoint
     zstr_send (pipe, zsock_endpoint(router));
    
     bool terminated = false;
-    zpoller_t *poller = zpoller_new (pipe, NULL);
+    zpoller_t *poller = zpoller_new (pipe, router);
     while (!terminated) {
         void *which = zpoller_wait (poller, 1);
         if (which == pipe) {
@@ -308,38 +315,40 @@ server_actor (zsock_t *pipe, void *args)
             char *command = zmsg_popstr (msg);
             if (streq (command, "$TERM"))
                 terminated = true;
-        }    
-        //  First frame in each message is the sender identity
-        zframe_t *identity = zframe_recv (router);
-        if (!identity)
-            break;              //  Shutting down, quit
+        } else if (which == router) {    
+            //  First frame in each message is the sender identity
+            zframe_t *identity = zframe_recv (router);
+            if (!identity)
+                break;              //  Shutting down, quit
             
-        //  Second frame is "fetch" command
-        char *command = zstr_recv (router);
-        assert (streq (command, "fetch"));
-        free (command);
+            //  Second frame is "fetch" command
+            char *command = zstr_recv (router);
+            assert (streq (command, "fetch"));
+            free (command);
 
-        //  Third frame is chunk offset in file
-        char *offset_str = zstr_recv (router);
-        size_t offset = atoi (offset_str);
-        free (offset_str);
+            //  Third frame is chunk offset in file
+            char *offset_str = zstr_recv (router);
+            size_t offset = atoi (offset_str);
+            free (offset_str);
 
-        //  Fourth frame is maximum chunk size
-        char *chunksz_str = zstr_recv (router);
-        size_t chunksz = atoi (chunksz_str);
-        free (chunksz_str);
+            //  Fourth frame is maximum chunk size
+            char *chunksz_str = zstr_recv (router);
+            size_t chunksz = atoi (chunksz_str);
+            free (chunksz_str);
 
-        //  Read chunk of data from file
-        fseek (file, offset, SEEK_SET);
-        byte *data = malloc (chunksz);
-        assert (data);
+            //  Read chunk of data from file
+            fseek (file, offset, SEEK_SET);
+            byte *data = malloc (chunksz);
+            assert (data);
 
-        //  Send resulting chunk to client
-        size_t size = fread (data, 1, chunksz, file);
-        zframe_t *chunk = zframe_new (data, size);
-        zframe_send (&identity, router, ZFRAME_MORE);
-        zframe_send (&chunk, router, 0);
+            //  Send resulting chunk to client
+            size_t size = fread (data, 1, chunksz, file);
+            zframe_t *chunk = zframe_new (data, size);
+            zframe_send (&identity, router, ZFRAME_MORE);
+            zframe_send (&chunk, router, 0);
+        }
     }
+    printf("Finished serving %s on %s\n", filename, zsock_endpoint(router));
     fclose (file);
     zpoller_destroy(&poller);
     zsock_destroy(&router);
@@ -922,7 +931,7 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 		    		sprintf(endpoint,"%s:%s:%s", protocol, host, port);
                                 rc = zhash_insert (self->queries, uid, file_server);
                                 // Required?
-  				// zpoller_add(self->poller, file_server);
+  				zpoller_add(self->poller, file_server);
 				json_t *pl;
 				pl = json_object();
 				json_object_set(pl, "UID", json_object_get(req,"UID"));
@@ -946,10 +955,29 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 			} else {
                    		const char* uid = json_string_value(json_object_get(req,"UID"));
 			    	int rc;
-                                zactor_t * file_client = zactor_new (client_actor, (char*)json_string_value(json_object_get(req, "URI")));
+				const char *args[3];
+				args[0] = strdup(peerid);
+  				args[1] = strdup(uid);
+				args[2] = json_string_value(json_object_get(req, "URI"));
+                                zactor_t * file_client = zactor_new (client_actor, args);
                                 rc = zhash_insert (self->queries, uid, file_client);
                                 // Required to know when transfer is completed
   				zpoller_add(self->poller, file_client);
+			}
+		} else if (streq (result->type, "remote_file_done")) {
+			json_t *req;
+			json_error_t error;
+			req = json_loads(result->payload, 0, &error);
+			if(!req) {
+				printf("Error parsing JSON payload!\n");
+				return;
+			} else {
+                   		const char* uid = json_string_value(json_object_get(req,"UID"));
+				printf("[%s] received remote_file_done, killing server %s\n", self->shortname, uid);
+				zactor_t *file_server = (zactor_t*) zhash_lookup(self->queries, uid);
+  				zpoller_remove(self->poller, file_server);
+				zactor_destroy(&file_server); // TODO: Does this send "$TERM"?
+                                zhash_delete (self->queries, uid);
 			}
 		} else {
 			printf ("[%s] unknown msg type\n", self->shortname);
@@ -970,6 +998,15 @@ void handle_remote_join (mediator_t *self, zmsg_t *msg) {
 	zstr_free(&peerid);
 	zstr_free(&name);
 	zstr_free(&group);
+}
+
+void handle_remote_evasive (mediator_t *self, zmsg_t *msg) {
+	assert (zmsg_size(msg) == 2);
+	char *peerid = zmsg_popstr (msg);
+	char *name = zmsg_popstr (msg);
+	printf ("[%s] EVASIVE %s %s\n", self->shortname, peerid, name);
+	zstr_free(&peerid);
+	zstr_free(&name);
 }
 
 void handle_local_enter(mediator_t *self, zmsg_t *msg) {
@@ -1067,6 +1104,15 @@ void handle_local_join (mediator_t *self, zmsg_t *msg) {
 	zstr_free(&peerid);
 	zstr_free(&name);
 	zstr_free(&group);
+}
+
+void handle_local_evasive (mediator_t *self, zmsg_t *msg) {
+	assert (zmsg_size(msg) == 2);
+	char *peerid = zmsg_popstr (msg);
+	char *name = zmsg_popstr (msg);
+	printf ("[%s] EVASIVE %s %s\n", self->shortname, peerid, name);
+	zstr_free(&peerid);
+	zstr_free(&name);
 }
 
 void process_send_msgs (mediator_t *self) {
@@ -1187,10 +1233,11 @@ int main(int argc, char *argv[]) {
                 handle_local_whisper (self, msg);
             } else if (streq (event, "JOIN")) {
                 handle_local_join (self, msg);
-            }
-            else {
-            	zmsg_print(msg);
-            }
+            } else if (streq (event, "EVASIVE")) {
+		handle_local_evasive (self, msg);
+            } else {
+		zmsg_print(msg);
+	    }
             zstr_free (&event);
             zmsg_destroy (&msg);
        } else if (which == zyre_socket (self->remote)) {
@@ -1213,7 +1260,9 @@ int main(int argc, char *argv[]) {
                 handle_remote_whisper (self, msg);
             } else if (streq (event, "JOIN")) {
                 handle_remote_join (self, msg);
-            } else {
+            } else if (streq (event, "EVASIVE")) {
+	        handle_remote_evasive (self, msg);
+	    } else {
             	zmsg_print(msg);
             }
             // check all msgs in send_req list for resend or abort
@@ -1233,8 +1282,24 @@ int main(int argc, char *argv[]) {
 	        query = zhash_next(self->queries);
 	    }
             if (query != NULL) {
-            	zmsg_t *msg = zmsg_recv(query);
-	        // TODO: do something with message.
+		// TODO: use JSON for internal communication?
+        	char *query_type = zstr_recv (which);
+        	if (streq (query_type, "remote_file_done")) { // TODO: how to call it? Query causing this file client is called "endpoint"
+			char *peerid = zstr_recv (which);
+			char *recv_uid = zstr_recv (which);
+ 			assert(streq(uid, recv_uid));
+     			printf("[%s] received remote_file_done from client_actor\n", self->shortname); 
+  			zpoller_remove(self->poller, query);
+			zhash_delete(self->queries,uid);
+			//zactor_destroy (&query); // TODO: required?
+			json_t *pl;
+			pl = json_object();
+			json_object_set(pl, "UID", json_string(recv_uid));
+			printf("[%s] informing remote peerid %s that query %s is done\n", self->shortname, peerid, recv_uid);
+			zyre_whispers(self->remote, peerid , "%s", encode_msg("sherpa_mgs","http://kul/remote_file_done.json","remote_file_done",pl));
+        		free (recv_uid);
+			json_decref(pl);
+		}
  	    }  
        }
 
