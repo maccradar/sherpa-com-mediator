@@ -8,6 +8,9 @@
 *.swp
 *swp
 
+# Ignore temp build files
+*.o
+
 # Unignore all dirs
 !*/
 

@@ -122,7 +122,13 @@ Return to setup the P2P connection for downloading the file.
 ```
 {
   UID: 2147aba0-0d59-41ec-8531-f6787fe52b60,
-  URI: host:port
+  URI: tcp://host:port
+}
+```
+Return message to remote mediator to file is downloaded: Type: remote_file_done
+```
+{
+  UID: 2147aba0-0d59-41ec-8531-f6787fe52b60,
 }
 ```
 Return message to local component: Type: file_path
