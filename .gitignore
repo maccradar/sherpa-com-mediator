@@ -1,4 +1,4 @@
-# Ignore all
+# Ignore all 
 *
 
 # Unignore all with extensions
@@ -7,6 +7,9 @@
 # Ignore swap files
 *.swp
 *swp
+
+# Ignore o files
+*.o
 
 # Unignore all dirs
 !*/

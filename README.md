@@ -30,7 +30,7 @@ For more information see the Dependencies file.
 ~/sherpa-proxy/build$ cd ..
 ```
 
-- start the mediator and provide it with a config file
+- Open start the mediator and provide it with a config file
 
 ```
 ~/sherpa-proxy/$ ./bin/sherpa_comm_mediator examples/configs/donkey.json
@@ -50,11 +50,11 @@ Open three terminals and run the following command in each.
 Start the mediator that will connect to our local compoenent in the first terminal.
 
 ```
-./sherpa_comm_mediator donkey.json
+~/sherpa-proxy/$ ./bin/sherpa_comm_mediator examples/configs/donkey.json
 ```
 Start a second robot in the second terminal.
 ```
-./sherpa_comm_mediator wasp1.json
+~/sherpa-proxy/$ ./bin/sherpa_comm_mediator examples/configs/wasp1.json
 ```
 Start the local component that will query for the peer list.
 ```

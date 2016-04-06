@@ -55,14 +55,13 @@ ELSE (JANSSON_FOUND)
     message( FATAL_ERROR "JANSSON not found." )
 ENDIF (JANSSON_FOUND)
 
-
+########################################################################
 
 
 
 #add_library(sherpa_comm_mediator SHARED ${PROJECT_SOURCE_DIR}/src/sherpa_comm_mediator.c)
 add_executable(sherpa_comm_mediator ${PROJECT_SOURCE_DIR}/src/sherpa_comm_mediator.c)
 target_link_libraries(sherpa_comm_mediator ${LIBS})
-
 
 install(TARGETS sherpa_comm_mediator DESTINATION ${INSTALL_DIR})
 
