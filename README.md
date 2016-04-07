@@ -58,7 +58,8 @@ Start a second robot in the second terminal.
 ```
 Start the local component that will query for the peer list.
 ```
-./request_peers_example
+~/sherpa-proxy/$ cd examples/request_peers/
+~/sherpa-proxy/examples/request_peers/$ ./request_peers_example
 ```
 For code explanations see the comments in the code. If specific questions remain, ask the authors. 
 
