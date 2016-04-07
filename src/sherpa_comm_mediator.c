@@ -599,7 +599,7 @@ char* generate_peer_list(mediator_t *self, json_msg_t *msg) {
 }
 
 ///////////////////////////////////////////////////
-void send_remote(mediator_t *self, json_msg_t *result, char* group) {
+void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 	/**
 	 * sends a msg to a list of remote peers and does the necessary bookkeeping
 	 * @param mediator_t* to the mediator data
@@ -1091,7 +1091,7 @@ void handle_local_shout(mediator_t *self, zmsg_t *msg) {
 			zstr_free(&peerlist);
 		} else if (streq (result->type, "send_remote")) {
 			// query for communication
-			send_remote(self, result, group);
+			send_remote(self, result, self->remotegroup);
 		} else if (streq (result->type, "query_remote_file")) {
 			json_t *req;
 			json_error_t error;
@@ -1100,8 +1100,8 @@ void handle_local_shout(mediator_t *self, zmsg_t *msg) {
 				printf("Error parsing JSON payload!\n");
 				return;
 			} else {
-                   		const char* uid = json_string_value(json_object_get(req,"UID"));
-                        	query_t * q = query_new(uid, strdup(peerid), result, NULL);
+				const char* uid = json_string_value(json_object_get(req,"UID"));
+                query_t * q = query_new(uid, strdup(peerid), result, NULL);
 				zlist_append(self->local_query_list, q); 
 				query_remote_file(self, result);
 			}
@@ -1267,10 +1267,10 @@ int main(int argc, char *argv[]) {
             } else if (streq (event, "JOIN")) {
                 handle_local_join (self, msg);
             } else if (streq (event, "EVASIVE")) {
-		handle_local_evasive (self, msg);
+            	handle_local_evasive (self, msg);
             } else {
-		zmsg_print(msg);
-	    }
+            	zmsg_print(msg);
+            }
             zstr_free (&event);
             zmsg_destroy (&msg);
        } else if (which == zyre_socket (self->remote)) {
