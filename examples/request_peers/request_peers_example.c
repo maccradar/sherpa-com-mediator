@@ -90,8 +90,9 @@ char* query_remote_peers(const char *uid) {
     payload = json_object();
     json_object_set(payload, "UID", json_string(uid));
     json_object_set(root, "payload", payload);
-
-    return json_dumps(root, JSON_ENCODE_ANY);
+    char* ret = json_dumps(root, JSON_ENCODE_ANY);
+    json_decref(root);
+    return ret;
 }
 
 int main(int argc, char *argv[]) {
