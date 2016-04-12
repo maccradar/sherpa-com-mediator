@@ -43,7 +43,7 @@ typedef struct _filter_list_item_t {
 
 typedef struct _send_msg_request_t {
 	const char *uid;
-	const char *requester;
+	const char *local_requester;
 	const char* group;
 	struct timespec ts_added;
 	struct timespec ts_last_sent;
@@ -639,8 +639,14 @@ void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 	printf("#recipients: %zu \n", json_array_size(recipients));
 	if (json_array_size(recipients) == 0) {
 		printf("[%s] No recipients. Fire and forget msg.\n",self->shortname);
-		zyre_shouts(self->remote, group, "%s", encode_msg("sherpa_mgs",strcat(strcat("http://kul/",type),".json"),type,pl));
+		char *res = (char*) malloc(sizeof(char)*(strlen("http://kul/")+strlen(type)+strlen(".json")+10));
+		assert(res);
+		strcpy(res,"http://kul/");
+		strcat(res,type);
+		strcat(res,".json");
+		zyre_shouts(self->remote, group, "%s", encode_msg("sherpa_mgs",res,type,pl));
 		json_decref(send_rqst);
+		if (res) {free(res);}
 		return;
 	} else {
 		zlist_t * peers = zyre_peers(self->remote);
@@ -658,7 +664,7 @@ void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 				json_decref(unknown_recipients);
 				return;
 			}
-			recipient_t *rec;
+			recipient_t *rec = (recipient_t*)malloc(sizeof(recipient_t));
 			rec->ack = false;
 			rec->id = json_string_value(value);
 			const char *it = zlist_first(peers);
@@ -690,7 +696,7 @@ void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 			json_object_set(pl, "error", json_string("Unknown recipients"));
 			json_object_set(pl, "recipients_delivered", tmp);
 			json_object_set(pl, "recipients_undelivered", unknown_recipients);
-			zyre_whispers(self->local, json_string_value(json_object_get(send_rqst,"requester")), "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
+			zyre_whispers(self->local, json_string_value(json_object_get(send_rqst,"local_requester")), "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
 			json_decref(tmp);
 			json_decref(pl);
 		} else {
@@ -707,7 +713,7 @@ void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 			}
 			msg_req->uid = json_string_value(dummy);
 			msg_req->recipients = recip;
-			dummy = json_object_get(send_rqst,"requester");
+			dummy = json_object_get(send_rqst,"local_requester");
 			if ((!dummy)||(!json_is_string(dummy))) {
 				printf("[%s] could not find requester in send_request \n",self->shortname);
 				zlist_destroy(&peers);
@@ -715,7 +721,7 @@ void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 				json_decref(send_rqst);
 				return;
 			}
-			msg_req->requester = json_string_value(dummy);
+			msg_req->local_requester = json_string_value(dummy);
 			dummy = json_object_get(send_rqst,"payload_type");
 			if ((!dummy)||(!json_is_string(dummy))) {
 				printf("[%s] could not find payload_type in send_request \n",self->shortname);
@@ -1089,7 +1095,7 @@ void handle_local_shout(mediator_t *self, zmsg_t *msg) {
 				printf ("[%s] Could not generate remote peer list! \n", self->shortname);
 			}
 			zstr_free(&peerlist);
-		} else if (streq (result->type, "send_remote")) {
+		} else if (streq (result->type, "send_request")) {
 			// query for communication
 			send_remote(self, result, self->remotegroup);
 		} else if (streq (result->type, "query_remote_file")) {
@@ -1108,10 +1114,10 @@ void handle_local_shout(mediator_t *self, zmsg_t *msg) {
 		} else {
 			printf("[%s] Unknown msg type!",self->shortname);
 		}
-		free(result);
 	} else {
 		printf ("[%s] message could not be decoded\n", self->shortname);
 	}
+	free(result);
 	zstr_free(&peerid);
 	zstr_free(&name);
 	zstr_free(&group);
@@ -1175,7 +1181,7 @@ void process_send_msgs (mediator_t *self) {
 		json_object_set(pl, "error", json_string("None"));
 		json_object_set(pl, "recipients_delivered", acknowledged);
 		json_object_set(pl, "recipients_undelivered", unacknowledged);
-		zyre_whispers(self->local, it->requester, "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
+		zyre_whispers(self->local, it->local_requester, "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
 		json_decref(pl);
 		send_msg_request_t *dummy = it;
 		it = zlist_next(self->send_msgs);
@@ -1194,7 +1200,7 @@ void process_send_msgs (mediator_t *self) {
 				json_object_set(pl, "error", json_string("Timeout"));
 				json_object_set(pl, "recipients_delivered", acknowledged);
 				json_object_set(pl, "recipients_undelivered", unacknowledged);
-				zyre_whispers(self->local, it->requester, "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
+				zyre_whispers(self->local, it->local_requester, "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
 				json_decref(pl);
 				send_msg_request_t *dummy = it;
 				it = zlist_next(self->send_msgs);

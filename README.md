@@ -71,10 +71,9 @@ handle errors
 
 
 ## Missing features:
-* set-up P2P session
-* download file from remote node
 * Subscribe to network changes (e.g. node becomes (un-)available)
 
 ## TODOs:
+* Refactor messy example code
 * Make features composable
-* Write python example for sending msgs and handling communication errors.
+* Port gossip protocol to pyre and provide python example

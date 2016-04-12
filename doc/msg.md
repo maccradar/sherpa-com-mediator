@@ -37,7 +37,7 @@ This is the message that needs to be sent to the mediator to request sending its
 ```
 {
   UID: 07a65b9b-ecfc-46f4-9997-a2619380857a,
-  requester: a1279775-99d1-4480-aded-05985fc9641e,
+  local_requester: a1279775-99d1-4480-aded-05985fc9641e,
   recipients: [88aad5c8-9e4e-494f-bdf5-f8f0049678e1,fe24d4cf-80fb-4e77-b04e-7f697d66fcb0],
   timeout: 5000,
   payload_type: RSG_update,

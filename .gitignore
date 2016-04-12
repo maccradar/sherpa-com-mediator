@@ -27,3 +27,4 @@ attic/
 # Ignore eclipse project files
 .project
 .cproject
+.pydevproject
