@@ -22,7 +22,7 @@ cd jansson
 autoreconf -i
 ./configure
 make
-make install
+sudo make install
 cd ..
 git clone --quiet --depth 1 https://github.com/zeromq/libzmq libzmq
 cd libzmq
@@ -35,7 +35,7 @@ if [ -e buildconf ]; then
 fi
 ./configure "${CONFIG_OPTS[@]}"
 make -j4
-make install
+sudo make install
 cd ..
 git clone --quiet --depth 1 https://github.com/zeromq/czmq czmq
 cd czmq
@@ -48,7 +48,7 @@ if [ -e buildconf ]; then
 fi
 ./configure "${CONFIG_OPTS[@]}"
 make -j4
-make install
+sudo make install
 cd ..
 git clone --quiet --depth 1 https://github.com/zeromq/zyre zyre
 cd zyre
@@ -61,8 +61,9 @@ if [ -e buildconf ]; then
 fi
 ./configure "${CONFIG_OPTS[@]}"
 make -j4
-make install
+sudo make install
 cd ..
+sudo updatedb
 mkdir build
 cd build
 cmake ..
