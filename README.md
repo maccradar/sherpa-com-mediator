@@ -71,7 +71,6 @@ handle errors
 
 ## Missing features:
 * set-up P2P session
-* download file from remote node
 * Subscribe to network changes (e.g. node becomes (un-)available)
 
 ## TODOs:
