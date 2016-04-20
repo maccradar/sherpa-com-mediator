@@ -29,26 +29,42 @@ cd ..
 wget http://download.zeromq.org/zeromq-4.1.2.tar.gz
 tar zxvf zeromq-4.1.2.tar.gz
 cd zeromq-4.1.2/
-./configure --with-libsodium=no
-make
+if [ -e autogen.sh ]; then
+./autogen.sh 2> /dev/null
+fi
+if [ -e buildconf ]; then
+./buildconf 2> /dev/null
+fi
+./configure "${CONFIG_OPTS[@]}"
+make -j4
 sudo make install
 cd ..
 # czmq 3.0.2
 wget https://github.com/zeromq/czmq/archive/v3.0.2.tar.gz
 tar zxvf v3.0.2.tar.gz
 cd czmq-3.0.2/
-sh ./autogen.sh
-./configure
-make
+if [ -e autogen.sh ]; then
+./autogen.sh 2> /dev/null
+fi
+if [ -e buildconf ]; then
+./buildconf 2> /dev/null
+fi
+./configure "${CONFIG_OPTS[@]}"
+make -j4
 sudo make install
 cd ..
 ## zyre 1.1.0
 wget https://github.com/zeromq/zyre/archive/v1.1.0.tar.gz
 tar zxvf v1.1.0.tar.gz
 cd zyre-1.1.0/
-sh ./autogen.sh
-./configure
-make
+if [ -e autogen.sh ]; then
+./autogen.sh 2> /dev/null
+fi
+if [ -e buildconf ]; then
+./buildconf 2> /dev/null
+fi
+./configure "${CONFIG_OPTS[@]}"
+make -j4
 sudo make install
 cd ..
 sudo updatedb
