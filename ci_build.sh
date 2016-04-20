@@ -15,6 +15,7 @@ CONFIG_OPTS=()
 #CONFIG_OPTS+=("--prefix=${BUILD_PREFIX}")
 CONFIG_OPTS+=("--with-docs=no")
 CONFIG_OPTS+=("--quiet")
+CONFIG_OPTS+=("--with-libsodium=no")
 
 # Clone and build dependencies
 # jansson
