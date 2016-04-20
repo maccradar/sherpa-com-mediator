@@ -68,7 +68,6 @@ fi
 make -j4
 sudo make install
 cd ..
-sudo updatedb
 mkdir build
 cd build
 cmake ..
