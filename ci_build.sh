@@ -17,6 +17,7 @@ CONFIG_OPTS+=("--with-docs=no")
 CONFIG_OPTS+=("--quiet")
 
 # Clone and build dependencies
+# jansson
 git clone https://github.com/akheron/jansson.git
 cd jansson
 autoreconf -i
@@ -24,43 +25,30 @@ autoreconf -i
 make
 sudo make install
 cd ..
-git clone --quiet --depth 1 https://github.com/zeromq/libzmq libzmq
-cd libzmq
-git --no-pager log --oneline -n1
-if [ -e autogen.sh ]; then
-./autogen.sh 2> /dev/null
-fi
-if [ -e buildconf ]; then
-./buildconf 2> /dev/null
-fi
-./configure "${CONFIG_OPTS[@]}"
-make -j4
+# zmq 4.1.2
+wget http://download.zeromq.org/zeromq-4.1.2.tar.gz
+tar zxvf zeromq-4.1.2.tar.gz
+cd zeromq-4.1.2/
+./configure --prefix=/opt/zeromq-4.1.2 --with-libsodium=no
+make
 sudo make install
 cd ..
-git clone --quiet --depth 1 https://github.com/zeromq/czmq czmq
-cd czmq
-git --no-pager log --oneline -n1
-if [ -e autogen.sh ]; then
-./autogen.sh 2> /dev/null
-fi
-if [ -e buildconf ]; then
-./buildconf 2> /dev/null
-fi
-./configure "${CONFIG_OPTS[@]}"
-make -j4
+# czmq 3.0.2
+wget https://github.com/zeromq/czmq/archive/v3.0.2.tar.gz
+tar zxvf v3.0.2.tar.gz
+cd czmq-3.0.2/
+sh ./autogen.sh
+env zmq_CFLAGS=-I/opt/zeromq-4.1.2/include zmq_LIBS="-L/opt/zeromq-4.1.2/lib -lzmq" ./configure --prefix=/opt/czmq-3.0.2
+make
 sudo make install
 cd ..
-git clone --quiet --depth 1 https://github.com/zeromq/zyre zyre
-cd zyre
-git --no-pager log --oneline -n1
-if [ -e autogen.sh ]; then
-./autogen.sh 2> /dev/null
-fi
-if [ -e buildconf ]; then
-./buildconf 2> /dev/null
-fi
-./configure "${CONFIG_OPTS[@]}"
-make -j4
+## zyre 1.1.0
+wget https://github.com/zeromq/zyre/archive/v1.1.0.tar.gz
+tar zxvf v1.1.0.tar.gz
+cd zyre-1.1.0/
+sh ./autogen.sh
+env PKG_CONFIG_PATH=/opt/zeromq-4.1.2/lib/pkgconfig:/opt/czmq-3.0.2/lib/pkgconfig ./configure --prefix=/opt/zyre-1.1.0
+make
 sudo make install
 cd ..
 sudo updatedb
