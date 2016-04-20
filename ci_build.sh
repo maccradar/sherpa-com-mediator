@@ -17,6 +17,13 @@ CONFIG_OPTS+=("--with-docs=no")
 CONFIG_OPTS+=("--quiet")
 
 # Clone and build dependencies
+git clone https://github.com/akheron/jansson.git
+cd jansson
+autoreconf -i
+./configure
+make
+make install
+cd ..
 git clone --quiet --depth 1 https://github.com/zeromq/libzmq libzmq
 cd libzmq
 git --no-pager log --oneline -n1
