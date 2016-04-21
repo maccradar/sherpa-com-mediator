@@ -1,6 +1,9 @@
 #ifndef MEDIATOR_H
 #define MEDIATOR_H
 
+#include <zyre.h>
+#include <jansson.h>
+
 typedef struct _mediator_t {
     const char *shortname;
     const char *localgroup;
@@ -201,6 +204,8 @@ mediator_t * mediator_new (json_t *config) {
 
     return self;
 }
+
+void mediator_test(bool verbose);
 
 void query_destroy (query_t **self_p) {
         assert (self_p);

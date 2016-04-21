@@ -912,9 +912,5 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-// Self test of this class
 
-void mediator_test (bool verbose) {
-    
-}
 
