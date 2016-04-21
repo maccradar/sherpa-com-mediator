@@ -205,7 +205,6 @@ mediator_t * mediator_new (json_t *config) {
     return self;
 }
 
-void mediator_test(bool verbose);
 
 void query_destroy (query_t **self_p) {
         assert (self_p);
