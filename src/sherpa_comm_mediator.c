@@ -5,6 +5,298 @@
 #include <stdio.h>
 #include <mediator.h>
 
+typedef struct _mediator_t {
+    const char *shortname;
+    const char *localgroup;
+    const char *remotegroup;
+    zyre_t *local;
+    zyre_t *remote;
+    json_t *config;
+    zlist_t *filter_list;
+    zlist_t *send_msgs;
+    bool verbose;
+    zpoller_t *poller;
+    zhash_t *queries;
+    zlist_t *remote_query_list;
+    zlist_t *local_query_list;
+} mediator_t;    
+
+typedef struct _json_msg_t {
+    char *metamodel;
+    char *model;
+    char *type;
+    char *payload;
+} json_msg_t;
+
+typedef struct _recipient_t {
+	const char *id;
+	bool ack;
+} recipient_t;
+
+typedef struct _filter_list_item_t {
+	const char *sender;
+	const char *msg_UID;
+	struct timespec ts;
+}filter_list_item_t;
+
+typedef struct _send_msg_request_t {
+	const char *uid;
+	const char *local_requester;
+	const char* group;
+	struct timespec ts_added;
+	struct timespec ts_last_sent;
+	int timeout; // in msec
+	zlist_t *recipients;
+	const char *payload_type;
+	const char *msg; // payload+metadata
+} send_msg_request_t;
+
+typedef struct _query_t {
+        const char *uid;
+        const char *requester;
+        json_msg_t *msg;
+        zactor_t *loop;
+} query_t;
+
+void mediator_destroy (mediator_t **self_p) {
+    assert (self_p);
+    if(*self_p) {
+        mediator_t *self = *self_p;
+        zyre_destroy (&self->local);
+        zyre_destroy (&self->remote);
+        zlist_destroy (&self->send_msgs);
+        zlist_destroy (&self->filter_list);
+	zlist_destroy (&self->remote_query_list);
+ 	zlist_destroy (&self->local_query_list);
+	zhash_destroy (&self->queries);
+        zpoller_destroy (&self->poller);
+        free (self);
+        *self_p = NULL;
+    }
+}
+
+mediator_t * mediator_new (json_t *config) {
+    mediator_t *self = (mediator_t *) zmalloc (sizeof (mediator_t));
+    if (!self)
+        return NULL;
+    
+    int major, minor, patch;
+    zyre_version (&major, &minor, &patch);
+    if (major != ZYRE_VERSION_MAJOR)
+        return NULL;
+    if (minor != ZYRE_VERSION_MINOR)
+        return NULL;
+    if (patch != ZYRE_VERSION_PATCH)
+        return NULL;
+    self->config = config;
+    //init list of send msg requests
+    self->send_msgs = zlist_new();
+    if (!self->send_msgs) {
+        mediator_destroy (&self);
+        return NULL;
+    }
+
+    //init list for filtering msg requests
+    self->filter_list = zlist_new();
+    if (!self->filter_list) {
+        mediator_destroy (&self);
+        return NULL;
+    }
+
+    //init list for remote queries
+    self->remote_query_list = zlist_new();
+    if (!self->remote_query_list) {
+        mediator_destroy (&self);
+        return NULL;
+    }
+    
+    //init list for local queries
+    self->local_query_list = zlist_new();
+    if (!self->local_query_list) {
+        mediator_destroy (&self);
+        return NULL;
+    }
+
+    self->shortname = json_string_value(json_object_get(config, "short-name"));
+    self->verbose = json_is_true(json_object_get(config, "verbose"));
+   
+    self->queries = zhash_new();
+    if (!self->queries) {
+        mediator_destroy (&self);
+        return NULL;
+    }
+ 
+    //  Create two nodes: 
+    //  - local gossip node for backend
+    //  - remote udp node for frontend
+    self->local = zyre_new (self->shortname);
+    if (!self->local) {
+        mediator_destroy (&self);
+        return NULL;
+    }
+    self->remote = zyre_new (self->shortname);
+    if (!self->remote) {
+        mediator_destroy (&self);
+        return NULL;
+    }
+
+    printf("[%s] my remote UUID: %s\n", self->shortname, zyre_uuid(self->remote));
+    json_object_set(config, "peerid", json_string(zyre_uuid(self->remote)));  
+    /* config is a JSON object */
+    // set values for config file as zyre header.
+    const char *key;
+    json_t *value;
+    json_object_foreach(config, key, value) {
+        /* block of code that uses key and value */
+    	const char *header_value;
+    	if(json_is_string(value)) {
+    		header_value = json_string_value(value);
+    	} else {
+    		header_value = json_dumps(value, JSON_ENCODE_ANY);
+    	}
+    	//printf(header_value);printf("\n");
+    	zyre_set_header(self->local, key, "%s", header_value);
+        zyre_set_header(self->remote, key, "%s", header_value);
+    }
+ 
+    if(self->verbose) {
+    	zyre_set_verbose (self->local);
+        zyre_set_verbose (self->remote);
+    }
+    
+    int rc;
+    if(!json_is_null(json_object_get(config, "gossip_endpoint"))) {
+    	rc = zyre_set_endpoint (self->local, "%s", json_string_value(json_object_get(config, "local_endpoint")));
+    	assert (rc == 0);
+    	printf("[%s] using gossip with local endpoint 'ipc:///tmp/%s-local' \n", self->shortname, self->shortname);
+    	//  Set up gossip network for this node
+    	zyre_gossip_bind (self->local, "%s", json_string_value(json_object_get(config, "gossip_endpoint")));
+    	printf("[%s] using gossip with gossip hub '%s' \n", self->shortname,json_string_value(json_object_get(config, "gossip_endpoint")));
+    } else {
+    	printf("[%s] WARNING: no local gossip communication is set! \n", self->shortname);
+    }
+    rc = zyre_start (self->local);
+    assert (rc == 0);
+    rc = zyre_start (self->remote);
+    assert (rc == 0);
+    assert (strneq (zyre_uuid (self->local), zyre_uuid (self->remote)));
+    // TODO: groups should be defined in config file!
+    const char* localgroup = "local";
+    const char* remotegroup = "remote";
+    zyre_join (self->local, localgroup);
+    zyre_join (self->remote, remotegroup);
+    self->localgroup = localgroup;
+    self->remotegroup = remotegroup;
+    //  Give time for them to interconnect
+    zclock_sleep (100);
+    if (self->verbose) {
+        zyre_dump (self->local);
+        zyre_dump (self->remote);
+    }
+
+    zpoller_t *poller =  zpoller_new (zyre_socket(self->local), zyre_socket(self->remote), NULL);
+    self->poller = poller;
+
+    zhash_t *hash = zhash_new ();
+    if (!hash) {
+        mediator_destroy (&self);
+        return NULL;
+    }
+
+    return self;
+}
+
+void query_destroy (query_t **self_p) {
+        assert (self_p);
+        if(*self_p) {
+            query_t *self = *self_p;
+            free (self);
+            *self_p = NULL;
+        }
+}
+
+query_t * query_new (const char *uid, const char *requester, json_msg_t *msg, zactor_t *loop) {
+        query_t *self = (query_t *) zmalloc (sizeof (query_t));
+        if (!self)
+            return NULL;
+        self->uid = uid;
+        self->requester = requester;
+        self->msg = msg;
+        self->loop = loop;
+        
+        return self;
+}
+
+
+// File transfer protocol
+#define CHUNK_SIZE 250000
+#define PIPELINE   10
+#define TARGET "/tmp/targetfile"
+
+static void
+client_actor (zsock_t *pipe, void *args)
+{
+    char* peerid = ((char**)args)[0];
+    char* uid = ((char**)args)[1];
+    char* endpoint = ((char**)args)[2];
+    FILE *file = fopen (TARGET, "w");
+    assert (file);
+    zsock_t *dealer = zsock_new_dealer(endpoint);
+    
+    //  Up to this many chunks in transit
+    size_t credit = PIPELINE;
+    
+    size_t total = 0;       //  Total bytes received
+    size_t chunks = 0;      //  Total chunks received
+    size_t offset = 0;      //  Offset of next chunk request
+    
+    zsock_signal (pipe, 0);     //  Signal "ready" to caller
+    
+    bool terminated = false;
+    zpoller_t *poller = zpoller_new (pipe, NULL);
+    while (!terminated) {
+        void *which = zpoller_wait (poller, 1);
+        if (which == pipe) {
+            zmsg_t *msg = zmsg_recv (which);
+            if (!msg)
+                break;              //  Interrupted
+            char *command = zmsg_popstr (msg);
+            if (streq (command, "$TERM"))
+                terminated = true;
+        }
+        while (credit) {
+            //  Ask for next chunk
+            zstr_sendm  (dealer, "fetch");
+            zstr_sendfm (dealer, "%ld", offset);
+            zstr_sendf  (dealer, "%ld", (long) CHUNK_SIZE);
+            offset += CHUNK_SIZE;
+            credit--;
+        }
+        zframe_t *chunk = zframe_recv (dealer);
+        if (!chunk)
+            break;              //  Shutting down, quit
+        chunks++;
+        credit++;
+        size_t size = zframe_size (chunk);
+        fwrite (zframe_data(chunk) , sizeof(char), size, file);
+        zframe_destroy (&chunk);
+        total += size;
+        if (size < CHUNK_SIZE)
+            break;//terminated = true;              //  Last chunk received; exit
+    } 
+    printf ("%zd chunks received, %zd bytes\n", chunks, total);
+    fclose(file);
+    // Query type
+    zstr_sendm (pipe, "remote_file_done");
+    zstr_sendm (pipe, peerid);
+    zstr_sendm (pipe, uid);
+    zstr_send (pipe, TARGET);
+    
+    zpoller_destroy(&poller);
+    zsock_destroy(&dealer);
+}
+>>>>>>> mediator
+
 
 /*
 ///////////////////////////////////////////////////
@@ -143,7 +435,7 @@ char* generate_peer_list(mediator_t *self, json_msg_t *msg) {
 }
 
 ///////////////////////////////////////////////////
-void send_remote(mediator_t *self, json_msg_t *result, char* group) {
+void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 	/**
 	 * sends a msg to a list of remote peers and does the necessary bookkeeping
 	 * @param mediator_t* to the mediator data
@@ -183,8 +475,14 @@ void send_remote(mediator_t *self, json_msg_t *result, char* group) {
 	printf("#recipients: %zu \n", json_array_size(recipients));
 	if (json_array_size(recipients) == 0) {
 		printf("[%s] No recipients. Fire and forget msg.\n",self->shortname);
-		zyre_shouts(self->remote, group, "%s", encode_msg("sherpa_mgs",strcat(strcat("http://kul/",type),".json"),type,pl));
+		char *res = (char*) malloc(sizeof(char)*(strlen("http://kul/")+strlen(type)+strlen(".json")+10));
+		assert(res);
+		strcpy(res,"http://kul/");
+		strcat(res,type);
+		strcat(res,".json");
+		zyre_shouts(self->remote, group, "%s", encode_msg("sherpa_mgs",res,type,pl));
 		json_decref(send_rqst);
+		if (res) {free(res);}
 		return;
 	} else {
 		zlist_t * peers = zyre_peers(self->remote);
@@ -202,7 +500,7 @@ void send_remote(mediator_t *self, json_msg_t *result, char* group) {
 				json_decref(unknown_recipients);
 				return;
 			}
-			recipient_t *rec;
+			recipient_t *rec = (recipient_t*)malloc(sizeof(recipient_t));
 			rec->ack = false;
 			rec->id = json_string_value(value);
 			const char *it = zlist_first(peers);
@@ -234,7 +532,7 @@ void send_remote(mediator_t *self, json_msg_t *result, char* group) {
 			json_object_set(pl, "error", json_string("Unknown recipients"));
 			json_object_set(pl, "recipients_delivered", tmp);
 			json_object_set(pl, "recipients_undelivered", unknown_recipients);
-			zyre_whispers(self->local, json_string_value(json_object_get(send_rqst,"requester")), "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
+			zyre_whispers(self->local, json_string_value(json_object_get(send_rqst,"local_requester")), "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
 			json_decref(tmp);
 			json_decref(pl);
 		} else {
@@ -251,7 +549,7 @@ void send_remote(mediator_t *self, json_msg_t *result, char* group) {
 			}
 			msg_req->uid = json_string_value(dummy);
 			msg_req->recipients = recip;
-			dummy = json_object_get(send_rqst,"requester");
+			dummy = json_object_get(send_rqst,"local_requester");
 			if ((!dummy)||(!json_is_string(dummy))) {
 				printf("[%s] could not find requester in send_request \n",self->shortname);
 				zlist_destroy(&peers);
@@ -259,7 +557,7 @@ void send_remote(mediator_t *self, json_msg_t *result, char* group) {
 				json_decref(send_rqst);
 				return;
 			}
-			msg_req->requester = json_string_value(dummy);
+			msg_req->local_requester = json_string_value(dummy);
 			dummy = json_object_get(send_rqst,"payload_type");
 			if ((!dummy)||(!json_is_string(dummy))) {
 				printf("[%s] could not find payload_type in send_request \n",self->shortname);
@@ -633,9 +931,9 @@ void handle_local_shout(mediator_t *self, zmsg_t *msg) {
 				printf ("[%s] Could not generate remote peer list! \n", self->shortname);
 			}
 			zstr_free(&peerlist);
-		} else if (streq (result->type, "send_remote")) {
+		} else if (streq (result->type, "send_request")) {
 			// query for communication
-			send_remote(self, result, group);
+			send_remote(self, result, self->remotegroup);
 		} else if (streq (result->type, "query_remote_file")) {
 			json_t *req;
 			json_error_t error;
@@ -644,18 +942,18 @@ void handle_local_shout(mediator_t *self, zmsg_t *msg) {
 				printf("Error parsing JSON payload!\n");
 				return;
 			} else {
-                   		const char* uid = json_string_value(json_object_get(req,"UID"));
-                        	query_t * q = query_new(uid, strdup(peerid), result, NULL);
+				const char* uid = json_string_value(json_object_get(req,"UID"));
+                query_t * q = query_new(uid, strdup(peerid), result, NULL);
 				zlist_append(self->local_query_list, q); 
 				query_remote_file(self, result);
 			}
 		} else {
 			printf("[%s] Unknown msg type!",self->shortname);
 		}
-		free(result);
 	} else {
 		printf ("[%s] message could not be decoded\n", self->shortname);
 	}
+	free(result);
 	zstr_free(&peerid);
 	zstr_free(&name);
 	zstr_free(&group);
@@ -719,7 +1017,7 @@ void process_send_msgs (mediator_t *self) {
 		json_object_set(pl, "error", json_string("None"));
 		json_object_set(pl, "recipients_delivered", acknowledged);
 		json_object_set(pl, "recipients_undelivered", unacknowledged);
-		zyre_whispers(self->local, it->requester, "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
+		zyre_whispers(self->local, it->local_requester, "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
 		json_decref(pl);
 		send_msg_request_t *dummy = it;
 		it = zlist_next(self->send_msgs);
@@ -738,7 +1036,7 @@ void process_send_msgs (mediator_t *self) {
 				json_object_set(pl, "error", json_string("Timeout"));
 				json_object_set(pl, "recipients_delivered", acknowledged);
 				json_object_set(pl, "recipients_undelivered", unacknowledged);
-				zyre_whispers(self->local, it->requester, "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
+				zyre_whispers(self->local, it->local_requester, "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
 				json_decref(pl);
 				send_msg_request_t *dummy = it;
 				it = zlist_next(self->send_msgs);
@@ -811,10 +1109,10 @@ int main(int argc, char *argv[]) {
             } else if (streq (event, "JOIN")) {
                 handle_local_join (self, msg);
             } else if (streq (event, "EVASIVE")) {
-		handle_local_evasive (self, msg);
+            	handle_local_evasive (self, msg);
             } else {
-		zmsg_print(msg);
-	    }
+            	zmsg_print(msg);
+            }
             zstr_free (&event);
             zmsg_destroy (&msg);
        } else if (which == zyre_socket (self->remote)) {

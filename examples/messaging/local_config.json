@@ -1,0 +1,9 @@
+{
+    "short-name": "msg_example_comp",
+    "long-name": "<longname>",
+    "type": "msg_example_comp",
+    "capabilities": ["send_msg","receive_msg"],
+    "local_endpoint": "ipc:///tmp/local_test_com-local",
+    "gossip_endpoint": "ipc:///tmp/local-hub",
+    "timeout": 5000
+}

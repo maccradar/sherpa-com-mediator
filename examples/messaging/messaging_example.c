@@ -2,6 +2,7 @@
 #include <jansson.h>
 #include <uuid/uuid.h>
 #include <string.h>
+#include <stdlib.h>
 
 typedef struct _json_msg_t {
     char *metamodel;
@@ -81,6 +82,7 @@ char* query_remote_peers(const char *uid) {
 	 *
 	 * @return the string encoded JSON msg that can be sent directly via zyre. Must be freed by user!
 	 */
+
     json_t *root;
     root = json_object();
     json_object_set(root, "metamodel", json_string("sherpa_mgs"));
@@ -89,6 +91,46 @@ char* query_remote_peers(const char *uid) {
     json_t *payload;
     payload = json_object();
     json_object_set(payload, "UID", json_string(uid));
+    json_object_set(root, "payload", payload);
+    char* ret = json_dumps(root, JSON_ENCODE_ANY);
+    json_decref(root);
+    return ret;
+}
+
+char* send_request(const char *uid, const char *local_req, json_t *recipients, int timeout, const char* payload_type, json_t *msg_payload) {
+	/**
+	 * creates a query to the mediator to send a msg
+	 *
+	 * @param uid that is used to identify the answer to the query
+	 * @param list of recipients as json array; msg is always broadcasted, but recipients on this list need to acknowledge the msg
+	 * @param timeout after which mediator will stop resending msg
+	 * @param payload_type as string that identifies payload
+	 * @param payload as json object
+	 *
+	 * @return the string encoded JSON msg that can be sent directly via zyre. Must be freed by user! Returns NULL if wrong json types are passed in.
+	 */
+
+	if (!json_is_array(recipients)) {
+		printf("ERROR: Recipients are not a json array! \n");
+		return NULL;
+	}
+	if (!json_is_object(msg_payload)) {
+		printf("ERROR: Payload is not a json object! \n");
+		return NULL;
+	}
+    json_t *root;
+    root = json_object();
+    json_object_set(root, "metamodel", json_string("sherpa_mgs"));
+    json_object_set(root, "model", json_string("http://kul/send_request.json"));
+    json_object_set(root, "type", json_string("send_request"));
+    json_t *payload;
+    payload = json_object();
+    json_object_set(payload, "UID", json_string(uid));
+    json_object_set(payload, "local_requester", json_string(local_req));
+    json_object_set(payload, "recipients", recipients);
+    json_object_set(payload, "timeout", json_integer(timeout));
+    json_object_set(payload, "payload_type", json_string(payload_type));
+    json_object_set(payload, "payload", msg_payload);
     json_object_set(root, "payload", payload);
     char* ret = json_dumps(root, JSON_ENCODE_ANY);
     json_decref(root);
@@ -104,7 +146,7 @@ int main(int argc, char *argv[]) {
     assert (patch == ZYRE_VERSION_PATCH);
 
     // load configuration file
-    json_t * config = load_config_file("request_peers_config.json");
+    json_t * config = load_config_file("local_config.json");
     if (config == NULL) {
       return -1;
     }
@@ -151,31 +193,20 @@ int main(int argc, char *argv[]) {
     }
     rc = zyre_start (local);
     assert (rc == 0);
-
     char* localgroup = strdup("local");
     zyre_join (local, localgroup);
-
     //  Give time for them to connect
     zclock_sleep (1000);
+
     if (verbose)
         zyre_dump (local);
 
-    //query for list of remote peers
-    char *peer_query = query_remote_peers("test_peer_query1");
-    zyre_shouts(local, localgroup, "%s", peer_query);
-    printf("[%s] Sent peer query: %s \n",self,peer_query);
     //create a list to store queries...
     zlist_t *query_list = zlist_new();
     assert (query_list);
     assert (zlist_size (query_list) == 0);
-    // ...and add the sent query to that list
-    query_t *item = (query_t *) zmalloc (sizeof(query_t));
-    item->msg = strdup(peer_query);
-    item->UID = strdup("test_peer_query1");
-    zlist_append(query_list,item);
-    zstr_free(&peer_query);
 
-    int flag = 1; //will be used to quit program after answer to query is received
+    int alive = 1; //will be used to quit program after answer to query is received
     zpoller_t *poller =  zpoller_new (zyre_socket(local), NULL);
 
     //check if there is at least one component connected
@@ -200,7 +231,7 @@ int main(int argc, char *argv[]) {
 			double ts_msec = ts.tv_sec*1.0e3 +ts.tv_nsec*1.0e-6;
 			if (curr_time_msec - ts_msec > timeout) {
 				printf("[%s] Timeout! Could not connect to other peers.\n",self);
-				flag = 0;
+				alive = 0;
 				break;
 			}
 		} else {
@@ -209,10 +240,95 @@ int main(int argc, char *argv[]) {
     	zclock_sleep (1000);
     }
     zlist_destroy(&tmp);
-    while(!zsys_interrupted && flag == 1) {
+
+    // some coordination variables (coordination should usually not be done by e.g. a state machine but will do it this way for simplicity)
+    int send_peer_query = 0;
+    int send_msg_unknown_recip = 0;
+    int send_fire_forget_msg = 1;
+
+    while(!zsys_interrupted && alive == 1) {
+
+
+    	if (send_fire_forget_msg) {
+    		//query mediator to send a fire and forget msg
+    		printf("\n");
+    		printf("#########################################\n");
+    		printf("[%s] Sending a msg without recipients (aka fire and forget msg)\n",self);
+    		printf("#########################################\n");
+    		printf("\n");
+			zuuid_t *query_uuid = zuuid_new ();
+			assert (query_uuid);
+			json_t *recip = json_array();
+			assert((recip)&&(json_array_size(recip)==0));
+			json_t *payload = json_object();
+			char *msg = send_request(zuuid_str(query_uuid),zyre_uuid(local),recip,1000,"dummy",payload);
+			if (msg) {
+				zyre_shouts(local, localgroup, "%s", msg);
+				printf("[%s] Sent msg: %s \n",self,msg);
+				zstr_free(&msg);
+				send_fire_forget_msg = 0;
+				send_msg_unknown_recip = 1;
+			} else {
+				alive = false;
+			}
+			zuuid_destroy (&query_uuid);
+
+    	} else if (send_msg_unknown_recip){
+			//query mediator to send a msg to an unknown recipient
+    		printf("\n");
+    		printf("#########################################\n");
+			printf("[%s] Sending a msg to an unknown recipient, then deal with the error msg\n",self);
+			printf("#########################################\n");
+			printf("\n");
+			zuuid_t *query_uuid = zuuid_new ();
+			assert (query_uuid);
+			json_t *recip = json_array();
+			assert((recip)&&(json_array_size(recip)==0));
+			json_array_append(recip,json_string("unknown_recip"));
+			json_t *payload = json_object();
+			char *msg = send_request(zuuid_str(query_uuid),zyre_uuid(local),recip,1000,"dummy",payload);
+			if (msg) {
+				zyre_shouts(local, localgroup, "%s", msg);
+				printf("[%s] Sent msg: %s \n",self,msg);
+
+				// ...and add the send query to the query list
+				query_t *item = (query_t *) zmalloc (sizeof(query_t));
+				item->msg = strdup(msg);
+				item->UID = strdup(zuuid_str(query_uuid));
+				zlist_append(query_list,item);
+				zstr_free(&msg);
+				send_msg_unknown_recip = 0;
+			} else {
+				alive = false;
+			}
+			zuuid_destroy (&query_uuid);
+
+    	} else if (send_peer_query) {
+    		printf("\n");
+    		printf("#########################################\n");
+			printf("[%s] Sending a peer query, select a robot of type wasp from it, wait for acknowledgment from wasp \n",self);
+			printf("#########################################\n");
+			printf("\n");
+			//query for list of remote peers
+			zuuid_t *query_uuid = zuuid_new ();
+			assert (query_uuid);
+			char *peer_query = query_remote_peers(zuuid_str(query_uuid));
+			zyre_shouts(local, localgroup, "%s", peer_query);
+			printf("[%s] Sent peer query: %s \n",self,peer_query);
+
+			// ...and add the sent query to the query list
+			query_t *item = (query_t *) zmalloc (sizeof(query_t));
+			item->msg = strdup(peer_query);
+			item->UID = strdup(zuuid_str(query_uuid));
+			zlist_append(query_list,item);
+			zstr_free(&peer_query);
+			zuuid_destroy (&query_uuid);
+
+			send_peer_query = 0;
+    	}
+
     	void *which = zpoller_wait (poller, ZMQ_POLL_MSEC);
     	if (which) {
-			printf("\n");
 			printf("[%s] local data received!\n", self);
 			zmsg_t *msg = zmsg_recv (which);
 			if (!msg) {
@@ -229,43 +345,65 @@ int main(int argc, char *argv[]) {
                 char *peerid = zmsg_popstr (msg);
                 char *name = zmsg_popstr (msg);
                 char *message = zmsg_popstr (msg);
-                //printf ("[%s] %s %s %s %s\n", self, event, peerid, name, message);
-                printf("[%s] Received: %s from %s\n",self, event, name);
+                printf ("[%s] %s %s %s %s\n", self, event, peerid, name, message);
+                //printf("[%s] Received: %s from %s\n",self, event, name);
 				json_msg_t *result = (json_msg_t *) zmalloc (sizeof (json_msg_t));
 				if (decode_json(message, result) == 0) {
-					if streq(result->type,"peer-list") {
-						// load the payload as json
-						json_t *payload;
-						json_error_t error;
-						payload= json_loads(result->payload,0,&error);
-						if(!payload) {
-							printf("Error parsing JSON send_remote! line %d: %s\n", error.line, error.text);
+					// load the payload as json
+					json_t *payload;
+					json_error_t error;
+					payload= json_loads(result->payload,0,&error);
+					if(!payload) {
+						printf("Error parsing JSON send_remote! line %d: %s\n", error.line, error.text);
+					} else {
+						const char *uid = json_string_value(json_object_get(payload,"UID"));
+						//TODO:does this string need to be freed?
+						if (!uid){
+							printf("[%s] Received msg without UID!\n", self);
 						} else {
-							const char *uid = json_string_value(json_object_get(payload,"UID"));
-							if (!uid){
-								printf("[%s] Received msg without UID!\n", self);
-							} else {
-								// search through stored list of queries and check if this query corresponds to one we have sent
-								query_t *it = zlist_first(query_list);
-								int found_UUID = 0;
-								while (it != NULL) {
-									if streq(it->UID, uid) {
-										printf("[%s] Received reply to query %s.\n", self, uid);
-										printf("Peer list: %s\n",result->payload);
-										//do something with the result here
-										flag = 0; //here we stop the loop
-										found_UUID = 1;
-										zlist_remove(query_list,it);
+							// search through stored list of queries and check if this query corresponds to one we have sent
+							query_t *it = zlist_first(query_list);
+							int found_UUID = 0;
+							while (it != NULL) {
+								if streq(it->UID, uid) {
+									printf("[%s] Received reply to query %s.\n", self, uid);
+									if (streq(result->type,"peer-list")){
+										printf("Received peer list: %s\n",result->payload);
+										//TODO: search list for a wasp
+										alive = 0;
+
+									} else if (streq(result->type,"communication_report")){
+										printf("Received communication_report: %s\n",result->payload);
+										/////////////////////////////////////////////////
+										//Do something with the report
+										if (json_is_true(json_object_get(payload,"success"))){
+											printf("Yeay! All recipients have received the msg.\n");
+										} else {
+											printf("Sending msg was not successful because of: %s\n",json_string_value(json_object_get(payload,"error")));
+										}
+										/////////////////////////////////////////////////
+
+										if (streq(json_string_value(json_object_get(payload,"error")),"Unknown recipients")){
+											//This is really not how coordination in a program should be done -> TODO: clean up
+											send_peer_query =1;
+										}
+
 									}
-									it = zlist_next(query_list);
+									found_UUID = 1;
+									zlist_remove(query_list,it);
+									//TODO: make sure the data of that query is properly freed
 								}
-								if (found_UUID == 0) {
-									printf("[%s] Received a msg with an unknown UID!\n", self);
-								}
+								it = zlist_next(query_list);
 							}
-							json_decref(payload);
+							if (found_UUID == 0) {
+								printf("[%s] Received a msg with an unknown UID!\n", self);
+							}
 						}
+						json_decref(payload);
 					}
+
+
+
 				} else {
 					printf ("[%s] message could not be decoded\n", self);
 				}

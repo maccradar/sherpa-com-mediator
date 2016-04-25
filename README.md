@@ -30,7 +30,7 @@ For more information see the Dependencies file.
 ~/sherpa-proxy/build$ cd ..
 ```
 
-- start the mediator and provide it with a config file
+- Open start the mediator and provide it with a config file
 
 ```
 ~/sherpa-proxy/$ ./bin/sherpa_comm_mediator examples/configs/donkey.json
@@ -50,15 +50,16 @@ Open three terminals and run the following command in each.
 Start the mediator that will connect to our local compoenent in the first terminal.
 
 ```
-./sherpa_comm_mediator donkey.json
+~/sherpa-proxy/$ ./bin/sherpa_comm_mediator examples/configs/donkey.json
 ```
 Start a second robot in the second terminal.
 ```
-./sherpa_comm_mediator wasp1.json
+~/sherpa-proxy/$ ./bin/sherpa_comm_mediator examples/configs/wasp1.json
 ```
 Start the local component that will query for the peer list.
 ```
-./request_peers_example
+~/sherpa-proxy/$ cd examples/request_peers/
+~/sherpa-proxy/examples/request_peers/$ ./request_peers_example
 ```
 For code explanations see the comments in the code. If specific questions remain, ask the authors. 
 
@@ -70,9 +71,9 @@ handle errors
 
 
 ## Missing features:
-* set-up P2P session
 * Subscribe to network changes (e.g. node becomes (un-)available)
 
 ## TODOs:
+* Refactor messy example code
 * Make features composable
-* Write python example for sending msgs and handling communication errors.
+* Port gossip protocol to pyre and provide python example

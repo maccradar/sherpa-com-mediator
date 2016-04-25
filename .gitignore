@@ -1,4 +1,4 @@
-# Ignore all
+# Ignore all 
 *
 
 # Unignore all with extensions
@@ -8,7 +8,7 @@
 *.swp
 *swp
 
-# Ignore temp build files
+# Ignore o files
 *.o
 
 # Unignore all dirs
@@ -27,3 +27,4 @@ attic/
 # Ignore eclipse project files
 .project
 .cproject
+.pydevproject

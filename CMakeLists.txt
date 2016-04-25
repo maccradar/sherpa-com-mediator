@@ -64,7 +64,6 @@ set(HEADER_FILES ${PROJECT_SOURCE_DIR}/include/mediator.h)
 add_executable(sherpa_comm_mediator ${PROJECT_SOURCE_DIR}/src/sherpa_comm_mediator.c ${HEADER_FILES})
 target_link_libraries(sherpa_comm_mediator ${LIBS})
 
-
 install(TARGETS sherpa_comm_mediator DESTINATION ${INSTALL_DIR})
 
 ## Test executable ##
