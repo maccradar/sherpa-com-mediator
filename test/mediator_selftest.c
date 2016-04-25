@@ -34,7 +34,8 @@ int mediator_test (bool verbose) {
         zyre_dump (mediator2->remote);
         zyre_dump (mediator2->local);
     }
-    
+    mediator_destroy(&mediator1);
+    mediator_destroy(&mediator2);
     return 0; 
 }
 
