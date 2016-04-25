@@ -40,7 +40,7 @@ typedef struct _filter_list_item_t {
 
 typedef struct _send_msg_request_t {
 	const char *uid;
-	const char *requester;
+	const char *local_requester;
 	const char* group;
         int64_t ts_added;
 	int64_t ts_last_sent;
