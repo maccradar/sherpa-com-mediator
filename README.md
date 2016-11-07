@@ -14,26 +14,26 @@ For more information see the Dependencies file.
 ### Installation
 - clone the project and move into this directory:
 ```sh
-~/$ git clone https://gitlab.mech.kuleuven.be:u0097847/sherpa-proxy.git
-~/$ cd sherpa-proxy
+git clone https://github.com/maccradar/sherpa-com-mediator.git
+cd sherpa-com-mediator
 ```
 
 
 - Build the project
 
 ```
-~/sherpa-proxy$ make
-~/sherpa-proxy$ mkdir build
-~/sherpa-proxy$ cd build
-~/sherpa-proxy/build$ cmake ..
-~/sherpa-proxy/build$ make
-~/sherpa-proxy/build$ cd ..
+~/sherpa-com-mediator$ make
+~/sherpa-com-mediator$ mkdir build
+~/sherpa-com-mediator$ cd build
+~/sherpa-com-mediator/build$ cmake ..
+~/sherpa-com-mediator/build$ make
+~/sherpa-com-mediator/build$ cd ..
 ```
 
 - Open start the mediator and provide it with a config file
 
 ```
-~/sherpa-proxy/$ ./bin/sherpa_comm_mediator examples/configs/donkey.json
+~/sherpa-com-mediator/$ ./bin/sherpa_comm_mediator examples/configs/donkey.json
 ```
 
 ## Examples:
@@ -50,16 +50,16 @@ Open three terminals and run the following command in each.
 Start the mediator that will connect to our local compoenent in the first terminal.
 
 ```
-~/sherpa-proxy/$ ./bin/sherpa_comm_mediator examples/configs/donkey.json
+~/sherpa-com-mediator/$ ./bin/sherpa_comm_mediator examples/configs/donkey.json
 ```
 Start a second robot in the second terminal.
 ```
-~/sherpa-proxy/$ ./bin/sherpa_comm_mediator examples/configs/wasp1.json
+~/sherpa-com-mediator/$ ./bin/sherpa_comm_mediator examples/configs/wasp1.json
 ```
 Start the local component that will query for the peer list.
 ```
-~/sherpa-proxy/$ cd examples/request_peers/
-~/sherpa-proxy/examples/request_peers/$ ./request_peers_example
+~/sherpa-com-mediator/$ cd examples/request_peers/
+~/sherpa-com-mediator/examples/request_peers/$ ./request_peers_example
 ```
 For code explanations see the comments in the code. If specific questions remain, ask the authors. 
 
