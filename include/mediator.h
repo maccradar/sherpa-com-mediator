@@ -165,9 +165,9 @@ mediator_t * mediator_new (json_t *config) {
     
     int rc;
     if(!json_is_null(json_object_get(config, "gossip_endpoint"))) {
-    	rc = zyre_set_endpoint (self->local, "%s", json_string_value(json_object_get(config, "local_endpoint")));
-    	assert (rc == 0);
-    	printf("[%s] using gossip with local endpoint 'ipc:///tmp/%s-local' \n", self->shortname, self->shortname);
+    	//rc = zyre_set_endpoint (self->local, "%s", json_string_value(json_object_get(config, "local_endpoint")));
+    	//assert (rc == 0);
+    	//printf("[%s] using gossip with local endpoint 'ipc:///tmp/%s-local' \n", self->shortname, self->shortname);
     	//  Set up gossip network for this node
     	zyre_gossip_bind (self->local, "%s", json_string_value(json_object_get(config, "gossip_endpoint")));
     	printf("[%s] using gossip with gossip hub '%s' \n", self->shortname,json_string_value(json_object_get(config, "gossip_endpoint")));
@@ -179,9 +179,21 @@ mediator_t * mediator_new (json_t *config) {
     rc = zyre_start (self->remote);
     assert (rc == 0);
     assert (strneq (zyre_uuid (self->local), zyre_uuid (self->remote)));
-    // TODO: groups should be defined in config file!
-    const char* localgroup = "local";
-    const char* remotegroup = "remote";
+    
+	const char* localgroup;
+	if(!json_is_null(json_object_get(config, "local-network"))) {
+		localgroup = json_string_value(json_object_get(config, "local-network"));
+	} else {
+		printf("[%s] WARNING: no name for local network set! Will use default name [local].",self->shortname);
+		localgroup = "local";
+	}
+	const char* remotegroup;
+	if(!json_is_null(json_object_get(config, "remote-network"))) {
+		remotegroup = json_string_value(json_object_get(config, "remote-network"));
+	} else {
+		printf("[%s] WARNING: no name for local network set! Will use default name [local].",self->shortname);
+		remotegroup = "remote";
+	}
     zyre_join (self->local, localgroup);
     zyre_join (self->remote, remotegroup);
     self->localgroup = localgroup;
