@@ -9,34 +9,6 @@
 
 
 
-
-
-
-char* encode_msg(char* metamodel, char* model, const char* type, json_t* payload) {
-	/**
-	 * encodes a Sherpa msg in its proper form
-	 *
-	 * @param char* to metamodel
-	 * @param char* to model
-	 * @param char* to msg type
-	 * @param jansson encoded json_t* to payload
-	 *
-	 * @return returns a char* that can be sent by zyre (user must free it afterwards)
-	 */
-	json_t *msg;
-	msg = json_object();
-	json_object_set(msg, "metamodel", json_string(metamodel));
-	json_object_set(msg, "model", json_string(model));
-	json_object_set(msg, "type", json_string(type));
-	json_object_set(msg, "payload", payload);
-	char *ret = json_dumps(msg, JSON_ENCODE_ANY);
-	json_decref(msg);
-	return ret;
-}
-
-
-
-
 /*
 ///////////////////////////////////////////////////
 // create team
