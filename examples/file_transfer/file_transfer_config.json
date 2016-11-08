@@ -6,5 +6,5 @@
     "local_endpoint": "ipc:///tmp/local_test_com-local",
     "gossip_endpoint": "ipc:///tmp/local-hub",
     "timeout": 5000,
-    "uri": "346958B611244E58A01520D4FDBE3DEB:./testdata"
+    "uri": "199F24B9295F4A309E4335AC57A6E2AC:./testdata"
 }

@@ -1,399 +1,16 @@
 
 #include <zyre.h>
-
-#include <time.h>
+#include <jansson.h>
 #include <stdbool.h>
-
 #include <stdio.h>
 #include <time.h>
-
-typedef struct _mediator_t {
-    const char *shortname;
-    const char *localgroup;
-    const char *remotegroup;
-    zyre_t *local;
-    zyre_t *remote;
-    json_t *config;
-    zlist_t *filter_list;
-    zlist_t *send_msgs;
-    bool verbose;
-    zpoller_t *poller;
-    zhash_t *queries;
-    zlist_t *remote_query_list;
-    zlist_t *local_query_list;
-} mediator_t;    
-
-typedef struct _json_msg_t {
-    char *metamodel;
-    char *model;
-    char *type;
-    char *payload;
-} json_msg_t;
-
-typedef struct _recipient_t {
-	const char *id;
-	bool ack;
-} recipient_t;
-
-typedef struct _filter_list_item_t {
-	const char *sender;
-	const char *msg_UID;
-	struct timespec ts;
-}filter_list_item_t;
-
-typedef struct _send_msg_request_t {
-	const char *uid;
-	const char *local_requester;
-	const char* group;
-	struct timespec ts_added;
-	struct timespec ts_last_sent;
-	int timeout; // in msec
-	zlist_t *recipients;
-	const char *payload_type;
-	const char *msg; // payload+metadata
-} send_msg_request_t;
-
-typedef struct _query_t {
-        const char *uid;
-        const char *requester;
-        json_msg_t *msg;
-        zactor_t *loop;
-} query_t;
-
-void mediator_destroy (mediator_t **self_p) {
-    assert (self_p);
-    if(*self_p) {
-        mediator_t *self = *self_p;
-        zyre_destroy (&self->local);
-        zyre_destroy (&self->remote);
-        zlist_destroy (&self->send_msgs);
-        zlist_destroy (&self->filter_list);
-	zlist_destroy (&self->remote_query_list);
- 	zlist_destroy (&self->local_query_list);
-	zhash_destroy (&self->queries);
-        zpoller_destroy (&self->poller);
-        free (self);
-        *self_p = NULL;
-    }
-}
-
-mediator_t * mediator_new (json_t *config) {
-    mediator_t *self = (mediator_t *) zmalloc (sizeof (mediator_t));
-    if (!self)
-        return NULL;
-    
-    int major, minor, patch;
-    zyre_version (&major, &minor, &patch);
-    if (major != ZYRE_VERSION_MAJOR)
-        return NULL;
-    if (minor != ZYRE_VERSION_MINOR)
-        return NULL;
-    if (patch != ZYRE_VERSION_PATCH)
-        return NULL;
-    self->config = config;
-    //init list of send msg requests
-    self->send_msgs = zlist_new();
-    if (!self->send_msgs) {
-        mediator_destroy (&self);
-        return NULL;
-    }
-
-    //init list for filtering msg requests
-    self->filter_list = zlist_new();
-    if (!self->filter_list) {
-        mediator_destroy (&self);
-        return NULL;
-    }
-
-    //init list for remote queries
-    self->remote_query_list = zlist_new();
-    if (!self->remote_query_list) {
-        mediator_destroy (&self);
-        return NULL;
-    }
-    
-    //init list for local queries
-    self->local_query_list = zlist_new();
-    if (!self->local_query_list) {
-        mediator_destroy (&self);
-        return NULL;
-    }
-
-    self->shortname = json_string_value(json_object_get(config, "short-name"));
-    self->verbose = json_is_true(json_object_get(config, "verbose"));
-   
-    self->queries = zhash_new();
-    if (!self->queries) {
-        mediator_destroy (&self);
-        return NULL;
-    }
- 
-    //  Create two nodes: 
-    //  - local gossip node for backend
-    //  - remote udp node for frontend
-    self->local = zyre_new (self->shortname);
-    if (!self->local) {
-        mediator_destroy (&self);
-        return NULL;
-    }
-    self->remote = zyre_new (self->shortname);
-    if (!self->remote) {
-        mediator_destroy (&self);
-        return NULL;
-    }
-
-    printf("[%s] my remote UUID: %s\n", self->shortname, zyre_uuid(self->remote));
-    json_object_set(config, "peerid", json_string(zyre_uuid(self->remote)));  
-    /* config is a JSON object */
-    // set values for config file as zyre header.
-    const char *key;
-    json_t *value;
-    json_object_foreach(config, key, value) {
-        /* block of code that uses key and value */
-    	const char *header_value;
-    	if(json_is_string(value)) {
-    		header_value = json_string_value(value);
-    	} else {
-    		header_value = json_dumps(value, JSON_ENCODE_ANY);
-    	}
-    	//printf(header_value);printf("\n");
-    	zyre_set_header(self->local, key, "%s", header_value);
-        zyre_set_header(self->remote, key, "%s", header_value);
-    }
- 
-    if(self->verbose) {
-    	zyre_set_verbose (self->local);
-        zyre_set_verbose (self->remote);
-    }
-    
-    int rc;
-    if(!json_is_null(json_object_get(config, "gossip_endpoint"))) {
-    	//rc = zyre_set_endpoint (self->local, "%s", json_string_value(json_object_get(config, "local_endpoint")));
-    	//assert (rc == 0);
-    	//printf("[%s] using gossip with local endpoint '%s' \n", self->shortname, json_string_value(json_object_get(config, "local_endpoint")));
-    	//  Set up gossip network for this node
-    	zyre_gossip_bind (self->local, "%s", json_string_value(json_object_get(config, "gossip_endpoint")));
-    	printf("[%s] using gossip with gossip hub '%s' \n", self->shortname,json_string_value(json_object_get(config, "gossip_endpoint")));
-    } else {
-    	printf("[%s] WARNING: no local gossip communication is set! \n", self->shortname);
-    }
-    rc = zyre_start (self->local);
-    assert (rc == 0);
-    rc = zyre_start (self->remote);
-    assert (rc == 0);
-    assert (strneq (zyre_uuid (self->local), zyre_uuid (self->remote)));
-    // TODO: groups should be defined in config file!
-    const char* localgroup = "local";
-    const char* remotegroup = "remote";
-    zyre_join (self->local, localgroup);
-    zyre_join (self->remote, remotegroup);
-    self->localgroup = localgroup;
-    self->remotegroup = remotegroup;
-    //  Give time for them to interconnect
-    zclock_sleep (100);
-    if (self->verbose) {
-        zyre_dump (self->local);
-        zyre_dump (self->remote);
-    }
-
-    zpoller_t *poller =  zpoller_new (zyre_socket(self->local), zyre_socket(self->remote), NULL);
-    self->poller = poller;
-
-    zhash_t *hash = zhash_new ();
-    if (!hash) {
-        mediator_destroy (&self);
-        return NULL;
-    }
-
-    return self;
-}
-
-void query_destroy (query_t **self_p) {
-        assert (self_p);
-        if(*self_p) {
-            query_t *self = *self_p;
-            free (self);
-            *self_p = NULL;
-        }
-}
-
-query_t * query_new (const char *uid, const char *requester, json_msg_t *msg, zactor_t *loop) {
-        query_t *self = (query_t *) zmalloc (sizeof (query_t));
-        if (!self)
-            return NULL;
-        self->uid = uid;
-        self->requester = requester;
-        self->msg = msg;
-        self->loop = loop;
-        
-        return self;
-}
+#include <mediator.h>
 
 
-// File transfer protocol
-#define CHUNK_SIZE 250000
-#define PIPELINE   10
-#define TARGET "/tmp/targetfile"
 
-static void
-client_actor (zsock_t *pipe, void *args)
-{
-    char* peerid = ((char**)args)[0];
-    char* uid = ((char**)args)[1];
-    char* endpoint = ((char**)args)[2];
-    FILE *file = fopen (TARGET, "w");
-    assert (file);
-    zsock_t *dealer = zsock_new_dealer(endpoint);
-    
-    //  Up to this many chunks in transit
-    size_t credit = PIPELINE;
-    
-    size_t total = 0;       //  Total bytes received
-    size_t chunks = 0;      //  Total chunks received
-    size_t offset = 0;      //  Offset of next chunk request
-    
-    zsock_signal (pipe, 0);     //  Signal "ready" to caller
-    
-    bool terminated = false;
-    zpoller_t *poller = zpoller_new (pipe, NULL);
-    while (!terminated) {
-    	//TODO: chack why this timeout is hardcoded! and then check the others
-        void *which = zpoller_wait (poller, 1);
-        if (which == pipe) {
-            zmsg_t *msg = zmsg_recv (which);
-            if (!msg)
-                break;              //  Interrupted
-            char *command = zmsg_popstr (msg);
-            if (streq (command, "$TERM"))
-                terminated = true;
-        }
-        while (credit) {
-            //  Ask for next chunk
-            zstr_sendm  (dealer, "fetch");
-            zstr_sendfm (dealer, "%ld", offset);
-            zstr_sendf  (dealer, "%ld", (long) CHUNK_SIZE);
-            offset += CHUNK_SIZE;
-            credit--;
-        }
-        zframe_t *chunk = zframe_recv (dealer);
-        if (!chunk)
-            break;              //  Shutting down, quit
-        chunks++;
-        credit++;
-        size_t size = zframe_size (chunk);
-        fwrite (zframe_data(chunk) , sizeof(char), size, file);
-        zframe_destroy (&chunk);
-        total += size;
-        if (size < CHUNK_SIZE)
-            break;//terminated = true;              //  Last chunk received; exit
-    } 
-    printf ("%zd chunks received, %zd bytes\n", chunks, total);
-    fclose(file);
-    // Query type
-    zstr_sendm (pipe, "remote_file_done");
-    zstr_sendm (pipe, peerid);
-    zstr_sendm (pipe, uid);
-    zstr_send (pipe, TARGET);
-    
-    zpoller_destroy(&poller);
-    zsock_destroy(&dealer);
-}
 
-//  The server thread waits for a chunk request from a client,
-//  reads that chunk and sends it back to the client:
 
-static void
-server_actor (zsock_t *pipe, void *args)
-{
-    // TODO: use JSON with parsed URI upfront?
-    char* uri = strdup((char*)args);
-    char* token;
-    token = strtok(uri, ":"); // Remove host/peerid
-    token = strtok(NULL, ":");
-    char* filename = strdup(token);
-    FILE *file = fopen (filename, "r");
-    assert (file);
-    zsock_t *router = zsock_new_router ("tcp://*:*");
 
-    //  We have two parts per message so HWM is PIPELINE * 2
-    zsocket_set_hwm (zsock_resolve(router), PIPELINE * 2);
-    
-    zsock_signal (pipe, 0);     //  Signal "ready" to caller
-    // Inform caller our endpoint
-    zstr_send (pipe, zsock_endpoint(router));
-   
-    bool terminated = false;
-    zpoller_t *poller = zpoller_new (pipe, router);
-    while (!terminated) {
-        void *which = zpoller_wait (poller, 1);
-        if (which == pipe) {
-            zmsg_t *msg = zmsg_recv (which);
-            if (!msg)
-                break;              //  Interrupted
-
-            char *command = zmsg_popstr (msg);
-            if (streq (command, "$TERM"))
-                terminated = true;
-        } else if (which == router) {    
-            //  First frame in each message is the sender identity
-            zframe_t *identity = zframe_recv (router);
-            if (!identity)
-                break;              //  Shutting down, quit
-            
-            //  Second frame is "fetch" command
-            char *command = zstr_recv (router);
-            assert (streq (command, "fetch"));
-            free (command);
-
-            //  Third frame is chunk offset in file
-            char *offset_str = zstr_recv (router);
-            size_t offset = atoi (offset_str);
-            free (offset_str);
-
-            //  Fourth frame is maximum chunk size
-            char *chunksz_str = zstr_recv (router);
-            size_t chunksz = atoi (chunksz_str);
-            free (chunksz_str);
-
-            //  Read chunk of data from file
-            fseek (file, offset, SEEK_SET);
-            byte *data = malloc (chunksz);
-            assert (data);
-
-            //  Send resulting chunk to client
-            size_t size = fread (data, 1, chunksz, file);
-            zframe_t *chunk = zframe_new (data, size);
-            zframe_send (&identity, router, ZFRAME_MORE);
-            zframe_send (&chunk, router, 0);
-        }
-    }
-    printf("Finished serving %s on %s\n", filename, zsock_endpoint(router));
-    fclose (file);
-    zpoller_destroy(&poller);
-    zsock_destroy(&router);
-}
-
-///////////////////////////////////////////////////
-// helper functions
-
-json_t * load_config_file(char* file) {
-	/**
-	 * loads the config file
-	 *
-	 * @param char* giving the path and filename to be loaded. Must point to a JSON file.
-	 *
-	 * @return jansson encoded json_t* (new reference) containing the content of the file as json object
-	 */
-    json_error_t error;
-    json_t * root;
-    root = json_load_file(file, JSON_ENSURE_ASCII, &error);
-    if(!root) {
-    	printf("Error parsing JSON file! file: %s, line %d: %s\n", error.source, error.line, error.text);
-    	return NULL;
-    }
-    printf("[%s] config file: %s\n", json_string_value(json_object_get(root, "short-name")), json_dumps(root, JSON_ENCODE_ANY));
-    return root;
-}
 
 char* encode_msg(char* metamodel, char* model, const char* type, json_t* payload) {
 	/**
@@ -417,51 +34,8 @@ char* encode_msg(char* metamodel, char* model, const char* type, json_t* payload
 	return ret;
 }
 
-int decode_json(char* message, json_msg_t *result) {
-	/**
-	 * decodes a received msg to json_msg types
-	 *
-	 * @param received msg as char*
-	 * @param json_msg_t* at which the result is stored
-	 *
-	 * @return returns 0 if successful and -1 if an error occurred
-	 */
-    json_t *root;
-    json_error_t error;
-    root = json_loads(message, 0, &error);
 
-    if(!root) {
-    	printf("Error parsing JSON string! line %d: %s\n", error.line, error.text);
-    	return -1;
-    }
 
-    if (json_object_get(root, "metamodel")) {
-    	result->metamodel = strdup(json_string_value(json_object_get(root, "metamodel")));
-    } else {
-    	printf("Error parsing JSON string! Does not conform to msg model.\n");
-    	return -1;
-    }
-    if (json_object_get(root, "model")) {
-		result->model = strdup(json_string_value(json_object_get(root, "model")));
-	} else {
-		printf("Error parsing JSON string! Does not conform to msg model.\n");
-		return -1;
-	}
-    if (json_object_get(root, "type")) {
-		result->type = strdup(json_string_value(json_object_get(root, "type")));
-	} else {
-		printf("Error parsing JSON string! Does not conform to msg model.\n");
-		return -1;
-	}
-    if (json_object_get(root, "payload")) {
-    	result->payload = strdup(json_dumps(json_object_get(root, "payload"), JSON_ENCODE_ANY));
-	} else {
-		printf("Error parsing JSON string! Does not conform to msg model.\n");
-		return -1;
-	}
-    json_decref(root);
-    return 0;
-}
 
 /*
 ///////////////////////////////////////////////////
@@ -469,11 +43,6 @@ int decode_json(char* message, json_msg_t *result) {
  *
  * DEPRECATED!
  *
- * TODO: port to new communication structure
- * * define msg
- * * react to msg by subscribing
- * * remember who needs to subscribe
- * * treat join msgs as acknowledgement
 
 
 void create_team(zyre_t *remote, char *payload) {
@@ -741,8 +310,8 @@ void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 				return;
 			}
 			msg_req->timeout = json_integer_value(dummy);
-			struct timespec ts;
-			if (clock_gettime(CLOCK_MONOTONIC,&ts)) {
+			int64_t ts = zclock_usecs ();
+			if (ts < 0) {
 				printf("[%s] Could not assign time stamp!\n",self->shortname);
 				zlist_destroy(&peers);
 				json_decref(unknown_recipients);
@@ -861,8 +430,8 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 			tmp->msg_UID = json_string_value(json_object_get(req,"UID"));
 			tmp->sender = strdup(peerid);
 			assert(tmp->sender);
-			struct timespec ts;
-			if (clock_gettime(CLOCK_MONOTONIC,&ts)) {
+		        int64_t ts = zclock_usecs();
+			if (ts < 0) {
 				printf("[%s] Could not assign time stamp!\n",self->shortname);
 			} else {
 				tmp->ts = ts;
@@ -1188,11 +757,11 @@ void process_send_msgs (mediator_t *self) {
 		it = zlist_next(self->send_msgs);
 		zlist_remove(self->send_msgs,dummy);
 	} else {
-		struct timespec curr_time;
-		if (!clock_gettime(CLOCK_MONOTONIC,&curr_time)) {
+		int64_t curr_time = zclock_usecs ();
+		if (curr_time > 0) {
 			// if timeout, send report and remove item from list
-			double curr_time_msec = curr_time.tv_sec*1.0e3 +curr_time.tv_nsec*1.0e-6;
-			double ts_msec = it->ts_added.tv_sec*1.0e3 +it->ts_added.tv_nsec*1.0e-6;
+			double curr_time_msec = curr_time*1.0e-3;
+			double ts_msec = it->ts_added*1.0e-3;
 			if (curr_time_msec - ts_msec > it->timeout) {
 				json_t *pl;
 				pl = json_object();
@@ -1207,7 +776,7 @@ void process_send_msgs (mediator_t *self) {
 				it = zlist_next(self->send_msgs);
 				zlist_remove(self->send_msgs,dummy);
 			} else {
-				double ts_msec = it->ts_last_sent.tv_sec*1.0e3 +it->ts_last_sent.tv_nsec*1.0e-6;
+				double ts_msec = it->ts_last_sent*1.0e-3;
 				if (curr_time_msec - ts_msec > json_integer_value(json_object_get(self->config, "resend_interval"))) {
 					// no timeout -> resend
 					zyre_shouts(self->remote, it->group, "%s", it->msg);
@@ -1224,13 +793,13 @@ void process_send_msgs (mediator_t *self) {
 		}
 
 		// remove items from filter list that are longer in there than the configured time
-		struct timespec curr_time;
-		if (!clock_gettime(CLOCK_MONOTONIC,&curr_time)) {
+		int64_t curr_time = zclock_usecs ();
+		if (curr_time > 0) {
 			filter_list_item_t *it = zlist_first(self->filter_list);
 			int length = json_integer_value(json_object_get(self->config, "msg_filter_length"));
 			while (it != NULL) {
-				double curr_time_msec = curr_time.tv_sec*1.0e3 +curr_time.tv_nsec*1.0e-6;
-				double ts_msec = it->ts.tv_sec*1.0e3 +it->ts.tv_nsec*1.0e-6;
+				double curr_time_msec = curr_time*1.0e-3;
+				double ts_msec = it->ts*1.0e-3;
 				if (curr_time_msec - ts_msec > length) {
 					filter_list_item_t *dummy = it;
 					it = zlist_next(self->filter_list);
@@ -1374,3 +943,6 @@ int main(int argc, char *argv[]) {
     printf ("SHUTDOWN\n");
     return 0;
 }
+
+
+
