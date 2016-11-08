@@ -3,21 +3,25 @@
 An example configuration file:
 ```
 {
-  "name": "donkey1",
-  "UID": "895636d5-0a65-4dea-8157-91acf7eb02d2",
-  "type": "donkey",
-  "capabilities": ["charge", "moveto"],
-  "local_endpoint": "ipc:///tmp/donkey1-local",
-  "gossip_endpoint": "ipc:///tmp/local-hub",
-  "msg_filter_length": 5000,
-  "resend_interval": 500
+    "short-name": "donkey1",
+    "long-name": "<longname>",
+    "local-network": "donkey1-local",
+    "remote-network": "donkey1-remote",
+    "type": "donkey",
+    "capabilities": ["charge", "moveto"],
+    "local_endpoint": "ipc:///tmp/donkey1-local",
+    "gossip_endpoint": "ipc:///tmp/local-hub",
+    "msg_filter_length": 5000,
+    "resend_interval": 500
 }
 ```
-* name: name used to display human readable things. Does not have to be unique!
-* UID: a unique ID that is used by the software. Must be unique! Reommendation: Set zyre UUID of component after start.
+* short-name: name used to display human readable things. Does not have to be unique!
+* long-name: name used internally. Does have to be unique!
+* local-network: name of the local network on the robot,
+* remote-network: name of the network between the robots,
 * type: the type of the component
 * capabilities: available capabilities of this component
-* local_endpoint: local endpoint used by zyre's gossip protocol
+* local_endpoint: local endpoint used by zyre's gossip protocol -> NOT USED ANYMORE
 * gossip_endpoint: shared gossip endpoint used by zyre's gossip protocol
 * msg_filter_length: length in msec how long msgs are kept in memory for avoiding receiving same msg multiple times. 
 * resend_interval: time on msec after which msg will be resent
