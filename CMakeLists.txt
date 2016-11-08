@@ -41,7 +41,7 @@ IF (ZYRE_FOUND)
     include_directories(${ZYRE_INCLUDE_DIRS})
     list(APPEND LIBS ${ZYRE_LIBRARIES})
 ELSE (ZYRE_FOUND)
-    message( FATAL_ERROR "czmq not found." )
+    message( FATAL_ERROR "zyre not found." )
 ENDIF (ZYRE_FOUND)
 
 ########################################################################

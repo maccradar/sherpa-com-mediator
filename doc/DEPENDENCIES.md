@@ -3,7 +3,7 @@
 ## Ubuntu packages
 
 ```sh
-apt-get install libtool pkg-config build-essential autoconf automake autogen uuid-dev
+sudp apt-get install libtool pkg-config build-essential autoconf automake autogen uuid-dev
 ```
 
 ## JSON
@@ -17,9 +17,9 @@ make
 make install
 ```
 ## ZMQ
-Stable Release 4.1.1
+Stable Release 4.1.2
 ```sh
-wget http://download.zeromq.org/zeromq-4.1.2.tar.gz
+wget https://archive.org/download/zeromq_4.1.2/zeromq-4.1.2.tar.gz
 tar zxvf zeromq-4.1.2.tar.gz
 cd zeromq-4.1.2/
 ./configure --prefix=/opt/zeromq-4.1.2 --with-libsodium=no

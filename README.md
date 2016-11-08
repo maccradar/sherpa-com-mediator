@@ -39,24 +39,24 @@ For more information see the Dependencies file.
 ## Examples:
 Find examples and their explanation in the corresponding subfolders. There is an example for each, C and Python code. The C example shows how to query for a list of connected robots and their configuration. The Python example still needs to be done :-)
 
-### C example: Query for list of connected nodes
+### Example 1: Query for list of connected nodes
 In this exaple we launch several instances of mediators (i.e. robots). Then we start a local component that queries for a list of all available robots. It will send the query and then wait for the reply, print the list of robots with their header/configuration data and exit.
 
 #### Build the example
 Run the makefile in the folder.
 
 #### Run the example
-Open three terminals and run the following command in each.
-Start the mediator that will connect to our local compoenent in the first terminal.
+Open three terminals.
+Start the mediator of the first agent that will connect to our local compoenent in the first terminal.
 
 ```
 ~/sherpa-proxy/$ ./bin/sherpa_comm_mediator examples/configs/donkey.json
 ```
-Start a second robot in the second terminal.
+Start a second agent in the second terminal.
 ```
 ~/sherpa-proxy/$ ./bin/sherpa_comm_mediator examples/configs/wasp1.json
 ```
-Start the local component that will query for the peer list.
+Start the local component that will query for the peer list in the third terminal.
 ```
 ~/sherpa-proxy/$ cd examples/request_peers/
 ~/sherpa-proxy/examples/request_peers/$ ./request_peers_example
@@ -64,16 +64,35 @@ Start the local component that will query for the peer list.
 For code explanations see the comments in the code. If specific questions remain, ask the authors. 
 
 
-### Python: Send messages and handle replies
+### Example 2: Send message and handle replies
 
-handle errors
+#### Build the example
+Run the makefile in the folder.
+
+#### Run the example
+Open three terminals.
+Start the mediator of the first agent that will connect to our local compoenent in the first terminal.
+
+```
+~/sherpa-proxy/$ ./bin/sherpa_comm_mediator examples/configs/donkey.json
+```
+Start a second agent in the second terminal.
+```
+~/sherpa-proxy/$ ./bin/sherpa_comm_mediator examples/configs/wasp1.json
+```
+Start the local component in the third terminal.
+```
+~/sherpa-proxy/$ cd examples/messaging/
+~/sherpa-proxy/examples/request_peers/$ ./messaging_example
+```
+For code explanations see the comments in the code. If specific questions remain, ask the authors. 
 
 
 
 ## Missing features:
-* Subscribe to network changes (e.g. node becomes (un-)available)
+* Subscribe to network changes (e.g. node becomes (un-)available) -> if somebody needs that, please contact us
 
 ## TODOs:
-* Refactor messy example code
+* Refactor example code
 * Make features composable
 * Port gossip protocol to pyre and provide python example

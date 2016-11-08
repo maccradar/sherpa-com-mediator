@@ -102,7 +102,7 @@ char* send_request(const char *uid, const char *local_req, json_t *recipients, i
 	 * creates a query to the mediator to send a msg
 	 *
 	 * @param uid that is used to identify the answer to the query
-	 * @param recipients list of recipients as json array; msg is always broadcasted, but recipients on this list need to acknowledge the msg
+	 * @param list of recipients as json array; msg is always broadcasted, but recipients on this list need to acknowledge the msg
 	 * @param timeout after which mediator will stop resending msg
 	 * @param payload_type as string that identifies payload
 	 * @param payload as json object

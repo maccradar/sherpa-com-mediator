@@ -21,19 +21,25 @@ SRCS = messaging_example.c
 OBJS = $(SRCS:.c=.o)
 
 # define the executable file 
-MAIN = messaging_example
+MAIN = messaging_example 
 
 
 .PHONY: depend clean
 
-all:    $(MAIN)
-	@echo messaging_example has been compiled
+all:    messaging_example 
+	@echo all examples have been compiled
 
 $(MAIN): $(OBJS) 
 	$(CC) $(CFLAGS) $(INCLUDES) -o $(MAIN) $(OBJS) $(LFLAGS) $(LIBS)
 
+#messaging_unknown_recipient: messaging_unknown_recipient.o
+#	$(CC) $(CFLAGS) $(INCLUDES) -o $@ messaging_unknown_recipient.o $(LFLAGS) $(LIBS)
+
+#messaging_unknown_recipient.o: messaging_unknown_recipient.c
+#	$(CC) $(CFLAGS) $(INCLUDES) messaging_unknown_recipient.c $(LFLAGS) $(LIBS)
+
 # this is a suffix replacement rule for building .o's from .c's
-.c.o:
+%.o: %.c
 	$(CC) $(CFLAGS) $(INCLUDES) -c $<  -o $@
 
 clean:
