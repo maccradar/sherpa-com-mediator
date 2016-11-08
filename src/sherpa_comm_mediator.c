@@ -56,9 +56,14 @@ void query_remote_file(mediator_t *self, json_msg_t *msg) {
 		json_decref(pl);
 		return;
 	}
-    
-    char *uri = strdup((char*)json_string_value(json_object_get(pl,"URI")));
-    printf("[%s] query remote file with URI: %s\n", self->shortname, uri);
+	char *uri = NULL;
+    if (json_object_get(pl,"URI")) {
+    	uri = strdup((char*)json_string_value(json_object_get(pl,"URI")));
+	} else {
+		printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
+		return;
+	}
+    printf("[%s] query remote file with URI: %s\n", self->shortname,uri);
     if (!uri) {
        printf("[%s] URI not specified, ignoring query!\n", self->shortname); 
        return;
@@ -98,7 +103,12 @@ char* generate_peer_list(mediator_t *self, json_msg_t *msg) {
 	return ret;
     }
     json_t *payload = json_object();
-    json_object_set(payload, "UID", json_object_get(pl,"UID"));
+    if (json_object_get(pl,"UID")) {
+    	json_object_set(payload, "UID", json_object_get(pl,"UID"));
+	} else {
+		printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
+		return NULL;
+	}
     json_t *peer_list;
     peer_list = json_array();
     json_object_set(payload, "peer_list", peer_list);
@@ -158,7 +168,13 @@ void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 		return;
 	}
 	json_t *recipients;
-	recipients = json_object_get(send_rqst,"recipients");
+	if (json_object_get(send_rqst,"recipients")) {
+		recipients = json_object_get(send_rqst,"recipients");
+	} else {
+		printf("[%s] WARNING: No query recipients given! Will abort. \n", self->shortname);
+		json_decref(send_rqst);
+		return;
+	}
 	if (!json_is_array(recipients)) {
 		printf("[%s] recipients of requested communication are not a JSON array!",self->shortname);
 		json_decref(send_rqst);
@@ -166,13 +182,27 @@ void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 	}
 	//TODO: validate if payload is proper Sherpa msg
 	//TODO: use payload type to allow binary payload
-	const char *type = json_string_value(json_object_get(send_rqst,"payload_type"));
+	const char *type = NULL;
+	if (json_object_get(send_rqst,"payload_type")) {
+		type = json_string_value(json_object_get(send_rqst,"payload_type"));
+	} else {
+		printf("[%s] WARNING: No payload_type given! Will abort. \n", self->shortname);
+		json_decref(send_rqst);
+		return;
+	}
 	if (!type) {
 		printf("[%s] could not find payload_type!",self->shortname);
 		json_decref(send_rqst);
 		return;
 	}
-	json_t *pl = json_object_get(send_rqst,"payload");
+	json_t *pl;
+	if (json_object_get(send_rqst,"payload")) {
+		pl = json_object_get(send_rqst,"payload");
+	} else {
+		printf("[%s] WARNING: No payload given! Will abort. \n", self->shortname);
+		json_decref(send_rqst);
+		return;
+	}
 	if (!pl) {
 		printf("[%s] could not find payload!",self->shortname);
 		json_decref(send_rqst);
@@ -186,9 +216,10 @@ void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 		strcpy(res,"http://kul/");
 		strcat(res,type);
 		strcat(res,".json");
-		zyre_shouts(self->remote, group, "%s", encode_msg("sherpa_mgs",res,type,pl));
+		zyre_shouts(self->remote, group, "%s", encode_msg("sherpa_mgs",res,type,send_rqst));
+		printf("sending %s \n",json_dumps(send_rqst, JSON_ENCODE_ANY));
 		json_decref(send_rqst);
-		if (res) {free(res);}
+		//if (res) {free(res);}
 		return;
 	} else {
 		zlist_t * peers = zyre_peers(self->remote);
@@ -364,8 +395,14 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 		printf("Error parsing JSON payload!\n");
 		return;
 	} else {
-		json_t *rec;
-		rec = json_object_get(req,"recipients");
+		json_t *rec = NULL;
+		if (json_object_get(req,"recipients")) {
+			rec = json_object_get(req,"recipients");
+		} else {
+			printf("[%s] WARNING: No recipients given! Will abort. \n", self->shortname);
+			json_decref(req);
+			return;
+		}
 		if(!json_is_array(rec)) {
 			printf("[%s] receivers is not a JSON array!", self->shortname);
 		} else {
@@ -375,7 +412,14 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 				if (streq(json_string_value(value),zyre_uuid(self->remote))) {
 					json_t *pl;
 					pl = json_object();
-					json_object_set(pl, "UID", json_object_get(req,"UID"));
+					if (json_object_get(req,"UID")) {
+						json_object_set(pl, "UID", json_object_get(req,"UID"));
+					} else {
+						printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
+						json_decref(pl);
+						json_decref(req);
+						return;
+					}
 					json_object_set(pl, "ID_receiver", json_string(zyre_uuid(self->remote)));
 					zyre_whispers(self->local, peerid, "%s", encode_msg("sherpa_mgs","http://kul/communication_ack.json","communication_ack",pl));
 					json_decref(pl);
@@ -388,6 +432,12 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 		filter_list_item_t *it = zlist_first(self->filter_list);
 		int flag = 0;
 		while (it != NULL) {
+			if (json_object_get(req,"UID")) {
+
+			} else {
+				printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
+				return;
+			}
 			if (streq(it->sender,peerid) && streq(it->msg_UID,json_string_value(json_object_get(req,"UID")))) {
 				flag = 1;
 				break;
@@ -396,19 +446,26 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 		}
 		if (flag == 0) {
 			// if not in list, forward msg to local network
+			printf("forwarding payload to local network \n");
 			zyre_shouts(self->local, self->localgroup, "%s", result->payload);
 			// push this msg into filter list
-			filter_list_item_t *tmp;
-			tmp->msg_UID = json_string_value(json_object_get(req,"UID"));
+			filter_list_item_t *tmp = (filter_list_item_t *) zmalloc (sizeof (filter_list_item_t));
+			if (json_object_get(req,"UID")) {
+				tmp->msg_UID = strdup(json_string_value(json_object_get(req,"UID")));
+			} else {
+				printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
+				return;
+			}
 			tmp->sender = strdup(peerid);
 			assert(tmp->sender);
-		        int64_t ts = zclock_usecs();
+		    int64_t ts = zclock_usecs();
 			if (ts < 0) {
 				printf("[%s] Could not assign time stamp!\n",self->shortname);
 			} else {
 				tmp->ts = ts;
 				zlist_push(self->filter_list,tmp);
 			}
+			printf("done adding to filter list");
 		}
 		json_decref(req);
 	}
@@ -426,7 +483,8 @@ void handle_remote_shout (mediator_t *self, zmsg_t *msg) {
 	if (decode_json(message, result)==0) {
 		printf ("[%s] message type %s\n", self->shortname, result->type);
 		if (streq (result->type, "send_remote")) {
-			handle_remote_send_remote(self, result, peerid);	
+			printf("handling remote send\n");
+			handle_remote_send_remote(self, result, peerid);
 		}
 	} else {
 		printf ("[%s] message could not be decoded\n", self->shortname);
@@ -454,16 +512,21 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 			} else {
 				send_msg_request_t *it = zlist_first(self->send_msgs);
 				while (it != NULL) {
-					if (streq(it->uid,json_string_value(json_object_get(root,"UID")))) {
-						recipient_t *inner_it = zlist_first(it->recipients);
-						while (inner_it != NULL) {
-							if (streq(peerid,inner_it->id)) {
-								inner_it->ack = true;
-								break;
+					if (json_object_get(root,"UID")) {
+						if (streq(it->uid,json_string_value(json_object_get(root,"UID")))) {
+							recipient_t *inner_it = zlist_first(it->recipients);
+							while (inner_it != NULL) {
+								if (streq(peerid,inner_it->id)) {
+									inner_it->ack = true;
+									break;
+								}
+								inner_it = zlist_next(it->recipients);
 							}
-							inner_it = zlist_next(it->recipients);
+							break;
 						}
-						break;
+					} else {
+						printf("[%s] WARNING: No URI given! Will abort. \n", self->shortname);
+						return;
 					}
 					it = zlist_next(self->send_msgs);
 				}
@@ -478,27 +541,33 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 				printf("Error parsing JSON payload!\n");
 				return;
 			} else {
-                   		const char* uid = json_string_value(json_object_get(req,"UID"));
-			    	int rc;
-                                zactor_t * file_server = zactor_new (server_actor, (char*)json_string_value(json_object_get(req, "URI")));
+				const char* uid = NULL;
+				if (json_object_get(req,"UID")) {
+					uid = json_string_value(json_object_get(req,"UID"));
+				} else {
+					printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
+					return;
+				}
+				int rc;
+				zactor_t * file_server = zactor_new (server_actor, (char*)json_string_value(json_object_get(req, "URI")));
 				// wait for endpoint
-                                char* endpoint = zstr_recv(file_server);
-    				const char s[2] = ":";
-    				char *token;
-		    		token = strtok(endpoint, ":");
-		    		char* protocol = strdup(token);
+				char* endpoint = zstr_recv(file_server);
+				const char s[2] = ":";
+				char *token;
+				token = strtok(endpoint, ":");
+				char* protocol = strdup(token);
 				token = strtok(NULL, ":");
-		    		char* host = strdup(token);
-		    		token = strtok(NULL, ":");
-		    		char* port = strdup(token);
-		    		while(token!=NULL)
-					token=strtok(NULL, ":");
-		    		if (streq(host,"//*")) // replace with hostname
-					sprintf(host,"//%s", zsys_hostname());
-		    		sprintf(endpoint,"%s:%s:%s", protocol, host, port);
-                                rc = zhash_insert (self->queries, uid, file_server);
-                                
-                                // Add to remote query_list
+				char* host = strdup(token);
+				token = strtok(NULL, ":");
+				char* port = strdup(token);
+				while(token!=NULL)
+				token=strtok(NULL, ":");
+				if (streq(host,"//*")) // replace with hostname
+				sprintf(host,"//%s", zsys_hostname());
+				sprintf(endpoint,"%s:%s:%s", protocol, host, port);
+				rc = zhash_insert (self->queries, uid, file_server);
+
+				// Add to remote query_list
 				query_t * q = query_new(uid, peerid, result, file_server);
 				zlist_append(self->remote_query_list, q);
   				zpoller_add(self->poller, file_server);
@@ -523,8 +592,14 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 				printf("Error parsing JSON payload!\n");
 				return;
 			} else {
-                   		const char* uid = json_string_value(json_object_get(req,"UID"));
-			    	int rc;
+				const char* uid = NULL;
+				if (json_object_get(req,"UID")) {
+					uid = json_string_value(json_object_get(req,"UID"));
+				} else {
+					printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
+					return;
+				}
+				int rc;
 				const char *args[3];
 				args[0] = strdup(peerid);
   				args[1] = strdup(uid);
@@ -542,7 +617,13 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 				printf("Error parsing JSON payload!\n");
 				return;
 			} else {
-                   		const char* uid = json_string_value(json_object_get(req,"UID"));
+				const char* uid = NULL;
+				if (json_object_get(req,"UID")) {
+					uid = json_string_value(json_object_get(req,"UID"));
+				} else {
+					printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
+					return;
+				}
 				printf("[%s] received remote_file_done, killing server %s\n", self->shortname, uid);
 				zactor_t *file_server = (zactor_t*) zhash_lookup(self->queries, uid);
   				zpoller_remove(self->poller, file_server);
