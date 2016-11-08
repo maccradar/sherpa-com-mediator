@@ -116,9 +116,19 @@ mediator_t * mediator_new (json_t *config) {
         return NULL;
     }
 
-    self->shortname = json_string_value(json_object_get(config, "short-name"));
-    self->verbose = json_is_true(json_object_get(config, "verbose"));
-   
+    if (json_object_get(config, "short-name")) {
+    	self->shortname = json_string_value(json_object_get(config, "short-name"));
+	} else {
+		printf("No shortname given.\n");
+		return NULL;
+	}
+
+    if (json_object_get(config, "verbose")) {
+    	self->verbose = json_is_true(json_object_get(config, "verbose"));
+	} else {
+		self->verbose = false;
+	}
+
     self->queries = zhash_new();
     if (!self->queries) {
         mediator_destroy (&self);
