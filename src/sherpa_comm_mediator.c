@@ -1,6 +1,6 @@
 
 #include <zyre.h>
-#include <jansson.h>
+
 #include <time.h>
 #include <stdbool.h>
 
@@ -168,9 +168,9 @@ mediator_t * mediator_new (json_t *config) {
     
     int rc;
     if(!json_is_null(json_object_get(config, "gossip_endpoint"))) {
-    	rc = zyre_set_endpoint (self->local, "%s", json_string_value(json_object_get(config, "local_endpoint")));
-    	assert (rc == 0);
-    	printf("[%s] using gossip with local endpoint '%s' \n", self->shortname, json_string_value(json_object_get(config, "local_endpoint")));
+    	//rc = zyre_set_endpoint (self->local, "%s", json_string_value(json_object_get(config, "local_endpoint")));
+    	//assert (rc == 0);
+    	//printf("[%s] using gossip with local endpoint '%s' \n", self->shortname, json_string_value(json_object_get(config, "local_endpoint")));
     	//  Set up gossip network for this node
     	zyre_gossip_bind (self->local, "%s", json_string_value(json_object_get(config, "gossip_endpoint")));
     	printf("[%s] using gossip with gossip hub '%s' \n", self->shortname,json_string_value(json_object_get(config, "gossip_endpoint")));
@@ -257,6 +257,7 @@ client_actor (zsock_t *pipe, void *args)
     bool terminated = false;
     zpoller_t *poller = zpoller_new (pipe, NULL);
     while (!terminated) {
+    	//TODO: chack why this timeout is hardcoded! and then check the others
         void *which = zpoller_wait (poller, 1);
         if (which == pipe) {
             zmsg_t *msg = zmsg_recv (which);
