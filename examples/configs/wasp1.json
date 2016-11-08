@@ -1,12 +1,12 @@
 {
     "short-name": "wasp1",
     "long-name": "<longname>",
-    "local-network": "wasp1-local",
-    "remote-network": "wasp1-remote",
+    "local-network": "local",
+    "remote-network": "remote",
     "type": "wasp",
     "capabilities": ["take off", "moveto", "land"],
     "local_endpoint": "ipc:///tmp/wasp1-local",
-    "gossip_endpoint": "ipc:///tmp/local-hub",
+    "gossip_endpoint": "ipc:///tmp/wasp-hub",
     "msg_filter_length": 5000,
     "resend_interval": 500
 }

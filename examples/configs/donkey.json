@@ -1,8 +1,8 @@
 {
     "short-name": "donkey1",
     "long-name": "<longname>",
-    "local-network": "donkey1-local",
-    "remote-network": "donkey1-remote",
+    "local-network": "local",
+    "remote-network": "remote",
     "type": "donkey",
     "capabilities": ["charge", "moveto"],
     "local_endpoint": "ipc:///tmp/donkey1-local",
