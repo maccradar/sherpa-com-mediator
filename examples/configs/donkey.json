@@ -6,7 +6,7 @@
     "type": "donkey",
     "capabilities": ["charge", "moveto"],
     "local_endpoint": "ipc:///tmp/donkey1-local",
-    "gossip_endpoint": "ipc:///tmp/local-hub",
+    "gossip_endpoint": "ipc:///tmp/donkey-hub",
     "msg_filter_length": 5000,
     "resend_interval": 500
 }

@@ -391,6 +391,7 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 	json_t *req;
 	json_error_t error;
 	req = json_loads(result->payload, 0, &error);
+	//load the payload=send_request
 	if(!req) {
 		printf("Error parsing JSON payload!\n");
 		return;
@@ -408,6 +409,7 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 		} else {
 			size_t index;
 			json_t *value;
+			//check if our robot is in the list of recipients and if yes, send ack
 			json_array_foreach(rec, index, value) {
 				if (streq(json_string_value(value),zyre_uuid(self->remote))) {
 					json_t *pl;
@@ -428,16 +430,14 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 			}
 		}
 		json_decref(rec);
-		// filter by msg requester+uid to see if this msg has already been forwarded
+		// filter by msg requester+uid to see if this msg has already been forwarded to local network
 		filter_list_item_t *it = zlist_first(self->filter_list);
 		int flag = 0;
+		if (!json_object_get(req,"UID")) {
+			printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
+			return;
+		}
 		while (it != NULL) {
-			if (json_object_get(req,"UID")) {
-
-			} else {
-				printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
-				return;
-			}
 			if (streq(it->sender,peerid) && streq(it->msg_UID,json_string_value(json_object_get(req,"UID")))) {
 				flag = 1;
 				break;
@@ -447,7 +447,11 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 		if (flag == 0) {
 			// if not in list, forward msg to local network
 			printf("forwarding payload to local network \n");
-			zyre_shouts(self->local, self->localgroup, "%s", result->payload);
+			if(!json_object_get(req,"payload")) {
+				printf("[%s] WARNING: No payload given! Will abort. \n", self->shortname);
+				return;
+			}
+			zyre_shouts(self->local, self->localgroup, "%s", json_dumps(json_object_get(req,"payload"), JSON_ENCODE_ANY));
 			// push this msg into filter list
 			filter_list_item_t *tmp = (filter_list_item_t *) zmalloc (sizeof (filter_list_item_t));
 			if (json_object_get(req,"UID")) {
@@ -461,11 +465,12 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 		    int64_t ts = zclock_usecs();
 			if (ts < 0) {
 				printf("[%s] Could not assign time stamp!\n",self->shortname);
+				return;
 			} else {
 				tmp->ts = ts;
 				zlist_push(self->filter_list,tmp);
 			}
-			printf("done adding to filter list\n");
+			printf("adding msg to filter list\n");
 		}
 	}
 	//json_decref(req);
