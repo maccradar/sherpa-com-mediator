@@ -453,7 +453,6 @@ int decode_json(char* message, json_msg_t *result) {
     	printf("Error parsing JSON string! line %d: %s\n", error.line, error.text);
     	return -1;
     }
-
     if (json_object_get(root, "metamodel")) {
     	result->metamodel = strdup(json_string_value(json_object_get(root, "metamodel")));
     } else {

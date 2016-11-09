@@ -465,11 +465,10 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 				tmp->ts = ts;
 				zlist_push(self->filter_list,tmp);
 			}
-			printf("done adding to filter list");
+			printf("done adding to filter list\n");
 		}
-		json_decref(req);
 	}
-	json_decref(req);
+	//json_decref(req);
 }
 
 void handle_remote_shout (mediator_t *self, zmsg_t *msg) {
@@ -489,6 +488,7 @@ void handle_remote_shout (mediator_t *self, zmsg_t *msg) {
 	} else {
 		printf ("[%s] message could not be decoded\n", self->shortname);
 	}
+	zstr_free(&message);
 	zstr_free(&peerid);
 	zstr_free(&name);
 	zstr_free(&group);
@@ -935,7 +935,7 @@ int main(int argc, char *argv[]) {
        } else {
 	    // Iterate query actors
 	    zactor_t* query = zhash_first(self->queries);
-            const char* uid;
+        const char* uid;
 	    while (query != NULL) {
                 if (which == query) {
                     uid = zhash_cursor(self->queries);
@@ -951,7 +951,7 @@ int main(int argc, char *argv[]) {
 			char *recv_uid = zstr_recv (which);
 			char *file_path = zstr_recv (which);
  			assert(streq(uid, recv_uid));
-     			printf("[%s] received remote_file_done from client_actor\n", self->shortname); 
+     			printf("[%s] received remote_file_done from client_actor\n", self->shortname);
   			zpoller_remove(self->poller, query);
 			zhash_delete(self->queries,uid);
 			//zactor_destroy (&query); // TODO: required?
@@ -960,7 +960,7 @@ int main(int argc, char *argv[]) {
 			json_object_set(pl, "UID", json_string(recv_uid));
 			printf("[%s] whispering remote peerid %s that query %s is done\n", self->shortname, peerid, recv_uid);
 			zyre_whispers(self->remote, peerid , "%s", encode_msg("sherpa_mgs","http://kul/remote_file_done.json","remote_file_done",pl));
-        		
+
 			json_object_set(pl, "URI", json_string(file_path));
 			// look up local requester
 			query_t *q = (query_t *) zlist_first(self->local_query_list);
@@ -981,7 +981,7 @@ int main(int argc, char *argv[]) {
 			free (recv_uid);
 			json_decref(pl);
 		}
- 	    }  
+ 	    }
        }
 
     }
