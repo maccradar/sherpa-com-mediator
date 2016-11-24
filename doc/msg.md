@@ -112,6 +112,26 @@ Return message: Type: peer-list
 * UID: UID of message that is used in communication back to requester. Needs to be unique for requester but not globally unique.
 * peer_list: array containing the UUIDs of all connected peers together with their header content
 
+### Type: query_mediator_uuid
+Returns the uuid of local (gossip) and remote uuid of the zyre network. The local node can be used to whisper to the mediator. The uuid of the remote network can be used for intra robot communication. For SHERPA the remote uuid should be used to add files to the SWM.
+Request message:
+```
+{
+  UID: 2147aba0-0d59-41ec-8531-f6787fe52b60
+}
+```
+Return message: Type: mediator_uuid
+```
+{
+  UID: 2147aba0-0d59-41ec-8531-f6787fe52b60,
+  local: 48d9aaf2-22ca-44fd-b4f5-5e67023c6dcb,
+  remote: a1279775-99d1-4480-aded-05985fc9641e
+}
+```
+* UID: UID of message that is used in communication back to requester. Needs to be unique for requester but not globally unique.
+* local:UUID of the mediator in the local (robot) network
+* remote: UUID of the mediator used in the intra robot communication
+
 ### Type: query_remote_file
 Fetch a remote file, store it locally, and return local file path.
 Request message:

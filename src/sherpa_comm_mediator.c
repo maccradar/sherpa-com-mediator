@@ -80,6 +80,44 @@ void query_remote_file(mediator_t *self, json_msg_t *msg) {
     json_decref(pl);
     
 }
+
+///////////////////////////////////////////////////
+// get mediator uuid query
+char* generate_mediator_uuid(mediator_t *self, json_msg_t *msg) {
+    /**
+     * generates a msg containing the uuid of the mediator in the local (on robot) and remote (intra robot) zyre network
+     *
+     * @param mediator_t* pointer to struct containing all the info about the mediator
+     * @param json_msg_t* to the decoded zyre msg
+     *
+     * @return returns NULL if it fails and a json object with the query ID, the local and remote uuid of the mediator
+     */
+	char *ret = NULL;
+	json_t *pl;
+	json_error_t error;
+	pl= json_loads(msg->payload,0,&error);
+	if(!pl) {
+		printf("Error parsing JSON payload! line %d: %s\n", error.line, error.text);
+		json_decref(pl);
+		return ret;
+	}
+	json_t *payload = json_object();
+	if (json_object_get(pl,"UID")) {
+		json_object_set(payload, "UID", json_object_get(pl,"UID"));
+	} else {
+		printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
+		return ret;
+	}
+	// get and add remote uuid
+	json_object_set(payload, "remote", json_string(zyre_uuid(self->remote)));
+	// get and add local uuid
+	json_object_set(payload, "local", json_string(zyre_uuid(self->local)));
+
+	ret = encode_msg("sherpa_mgs","http://kul/mediator_uuid.json","mediator_uuid",payload);
+	json_decref(payload);
+	json_decref(pl);
+	return ret;
+}
 ///////////////////////////////////////////////////
 // remote peer query
 
@@ -87,8 +125,7 @@ char* generate_peer_list(mediator_t *self, json_msg_t *msg) {
     /**
      * generates a list list of peers connected on the given zyre network
      *
-     * @param zyre_t* to the zyre network that should be queried
-     * @param json_t* to the own header
+     * @param mediator_t* pointer to struct containing all the info about the mediator
      * @param json_msg_t* to the decoded zyre msg
      *
      * @return returns NULL if it fails and a json array of peers with their headers dumped in a string otherwise
@@ -100,14 +137,14 @@ char* generate_peer_list(mediator_t *self, json_msg_t *msg) {
     if(!pl) {
         printf("Error parsing JSON payload! line %d: %s\n", error.line, error.text);
         json_decref(pl);
-	return ret;
+        return ret;
     }
     json_t *payload = json_object();
     if (json_object_get(pl,"UID")) {
     	json_object_set(payload, "UID", json_object_get(pl,"UID"));
 	} else {
 		printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
-		return NULL;
+		return ret;
 	}
     json_t *peer_list;
     peer_list = json_array();
@@ -726,6 +763,15 @@ void handle_local_shout(mediator_t *self, zmsg_t *msg) {
 		} else if (streq (result->type, "send_request")) {
 			// query for communication
 			send_remote(self, result, self->remotegroup);
+		} else if (streq (result->type, "query_mediator_uuid")) {
+			// send uuid of local (gossip) and remote network (to be used )
+			char *mediator_uuid_msg = generate_mediator_uuid(self, result);
+			if (mediator_uuid_msg) {
+				zyre_whispers(self->local, peerid, "%s", mediator_uuid_msg);
+			} else {
+				printf ("[%s] Could not generate mediator uuid! \n", self->shortname);
+			}
+			zstr_free(&mediator_uuid_msg);
 		} else if (streq (result->type, "query_remote_file")) {
 			json_t *req;
 			json_error_t error;
