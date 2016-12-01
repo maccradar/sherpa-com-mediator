@@ -82,7 +82,7 @@ void query_remote_file(mediator_t *self, json_msg_t *msg) {
 }
 
 ///////////////////////////////////////////////////
-// get mediator uuid query
+// get mediator uuid
 char* generate_mediator_uuid(mediator_t *self, json_msg_t *msg) {
     /**
      * generates a msg containing the uuid of the mediator in the local (on robot) and remote (intra robot) zyre network
@@ -767,7 +767,8 @@ void handle_local_shout(mediator_t *self, zmsg_t *msg) {
 			// send uuid of local (gossip) and remote network (to be used )
 			char *mediator_uuid_msg = generate_mediator_uuid(self, result);
 			if (mediator_uuid_msg) {
-				zyre_whispers(self->local, peerid, "%s", mediator_uuid_msg);
+				//zyre_whispers(self->local, peerid, "%s", mediator_uuid_msg);
+				zyre_shouts(self->local,self->localgroup, "%s", mediator_uuid_msg);
 			} else {
 				printf ("[%s] Could not generate mediator uuid! \n", self->shortname);
 			}
