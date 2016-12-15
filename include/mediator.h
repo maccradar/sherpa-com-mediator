@@ -456,13 +456,13 @@ int decode_json(char* message, json_msg_t *result) {
     if (json_object_get(root, "metamodel")) {
     	result->metamodel = strdup(json_string_value(json_object_get(root, "metamodel")));
     } else {
-    	printf("Error parsing JSON string! Does not conform to msg model.\n");
+    	printf("Error parsing JSON string! Does not conform to msg model. No metamodel specified.\n");
     	return -1;
     }
     if (json_object_get(root, "model")) {
 		result->model = strdup(json_string_value(json_object_get(root, "model")));
 	} else {
-		printf("Error parsing JSON string! Does not conform to msg model.\n");
+		printf("Error parsing JSON string! Does not conform to msg model. No model specified.\n");
 		return -1;
 	}
     if (json_object_get(root, "type")) {
@@ -474,7 +474,7 @@ int decode_json(char* message, json_msg_t *result) {
     if (json_object_get(root, "payload")) {
     	result->payload = strdup(json_dumps(json_object_get(root, "payload"), JSON_ENCODE_ANY));
 	} else {
-		printf("Error parsing JSON string! Does not conform to msg model.\n");
+		printf("Error parsing JSON string! Does not conform to msg model. No payload specified.\n");
 		return -1;
 	}
     json_decref(root);
