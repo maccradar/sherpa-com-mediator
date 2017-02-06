@@ -310,7 +310,7 @@ void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 			json_decref(tmp);
 			json_decref(pl);
 		} else {
-			send_msg_request_t *msg_req;
+                        send_msg_request_t *msg_req = (send_msg_request_t*)malloc(sizeof(send_msg_request_t));;
 			//build msg_req struct and append it to global list
 			json_t *dummy;
 			dummy = json_object_get(send_rqst,"UID");
