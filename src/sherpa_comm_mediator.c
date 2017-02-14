@@ -208,7 +208,7 @@ void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 	if (json_object_get(send_rqst,"recipients")) {
 		recipients = json_object_get(send_rqst,"recipients");
 	} else {
-		printf("[%s] WARNING: No query recipients given! Will abort. \n", self->shortname);
+		printf("[%s] WARNING: No query recipients object given! Will abort. \n", self->shortname);
 		json_decref(send_rqst);
 		return;
 	}
@@ -832,87 +832,87 @@ void handle_local_evasive (mediator_t *self, zmsg_t *msg) {
 void process_send_msgs (mediator_t *self) {
     send_msg_request_t *it = zlist_first(self->send_msgs);
     while (it != NULL) {
-	//check if all recipients have acknowledged reception of msg
-	recipient_t *inner_it = zlist_first(it->recipients);
-	int flag = 1;
-	json_t *acknowledged;
-	acknowledged = json_array();
-	json_t *unacknowledged;
-	unacknowledged = json_array();
-	while (inner_it != NULL) {
-		if (inner_it->ack == false) {
-			flag = 0;
-			json_array_append(unacknowledged,json_string(inner_it->id));
-		} else
-			json_array_append(acknowledged,json_string(inner_it->id));
-		inner_it = zlist_next(it->recipients);
-	}
-	if (flag == 1) {
-		// if all recipients have acknowledged, send report and remove item from list
-		json_t *pl;
-		pl = json_object();
-		json_object_set(pl, "UID", json_string(it->uid));
-		json_object_set(pl, "success", json_true());
-		json_object_set(pl, "error", json_string("None"));
-		json_object_set(pl, "recipients_delivered", acknowledged);
-		json_object_set(pl, "recipients_undelivered", unacknowledged);
-		zyre_whispers(self->local, it->local_requester, "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
-		json_decref(pl);
-		send_msg_request_t *dummy = it;
-		it = zlist_next(self->send_msgs);
-		zlist_remove(self->send_msgs,dummy);
-	} else {
-		int64_t curr_time = zclock_usecs ();
-		if (curr_time > 0) {
-			// if timeout, send report and remove item from list
-			double curr_time_msec = curr_time*1.0e-3;
-			double ts_msec = it->ts_added*1.0e-3;
-			if (curr_time_msec - ts_msec > it->timeout) {
-				json_t *pl;
-				pl = json_object();
-				json_object_set(pl, "UID", json_string(it->uid));
-				json_object_set(pl, "success", json_false());
-				json_object_set(pl, "error", json_string("Timeout"));
-				json_object_set(pl, "recipients_delivered", acknowledged);
-				json_object_set(pl, "recipients_undelivered", unacknowledged);
-				zyre_whispers(self->local, it->local_requester, "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
-				json_decref(pl);
-				send_msg_request_t *dummy = it;
-				it = zlist_next(self->send_msgs);
-				zlist_remove(self->send_msgs,dummy);
-			} else {
-				double ts_msec = it->ts_last_sent*1.0e-3;
-				if (curr_time_msec - ts_msec > json_integer_value(json_object_get(self->config, "resend_interval"))) {
-					// no timeout -> resend
-					zyre_shouts(self->remote, it->group, "%s", it->msg);
-					it->ts_last_sent = curr_time;
+		//check if all recipients have acknowledged reception of msg
+		recipient_t *inner_it = zlist_first(it->recipients);
+		int flag = 1;
+		json_t *acknowledged;
+		acknowledged = json_array();
+		json_t *unacknowledged;
+		unacknowledged = json_array();
+		while (inner_it != NULL) {
+			if (inner_it->ack == false) {
+				flag = 0;
+				json_array_append(unacknowledged,json_string(inner_it->id));
+			} else
+				json_array_append(acknowledged,json_string(inner_it->id));
+			inner_it = zlist_next(it->recipients);
+		}
+		if (flag == 1) {
+			// if all recipients have acknowledged, send report and remove item from list
+			json_t *pl;
+			pl = json_object();
+			json_object_set(pl, "UID", json_string(it->uid));
+			json_object_set(pl, "success", json_true());
+			json_object_set(pl, "error", json_string("None"));
+			json_object_set(pl, "recipients_delivered", acknowledged);
+			json_object_set(pl, "recipients_undelivered", unacknowledged);
+			zyre_whispers(self->local, it->local_requester, "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
+			json_decref(pl);
+			send_msg_request_t *dummy = it;
+			it = zlist_next(self->send_msgs);
+			zlist_remove(self->send_msgs,dummy);
+		} else {
+			int64_t curr_time = zclock_usecs ();
+			if (curr_time > 0) {
+				// if timeout, send report and remove item from list
+				double curr_time_msec = curr_time*1.0e-3;
+				double ts_msec = it->ts_added*1.0e-3;
+				if (curr_time_msec - ts_msec > it->timeout) {
+					json_t *pl;
+					pl = json_object();
+					json_object_set(pl, "UID", json_string(it->uid));
+					json_object_set(pl, "success", json_false());
+					json_object_set(pl, "error", json_string("Timeout"));
+					json_object_set(pl, "recipients_delivered", acknowledged);
+					json_object_set(pl, "recipients_undelivered", unacknowledged);
+					zyre_whispers(self->local, it->local_requester, "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
+					json_decref(pl);
+					send_msg_request_t *dummy = it;
+					it = zlist_next(self->send_msgs);
+					zlist_remove(self->send_msgs,dummy);
+				} else {
+					double ts_msec = it->ts_last_sent*1.0e-3;
+					if (curr_time_msec - ts_msec > json_integer_value(json_object_get(self->config, "resend_interval"))) {
+						// no timeout -> resend
+						zyre_shouts(self->remote, it->group, "%s", it->msg);
+						it->ts_last_sent = curr_time;
+					}
 					it = zlist_next(self->send_msgs);
 				}
-			}
-		} else {
-			printf ("[%s] could not get current time\n", self->shortname);
-		}
-			}
-			json_decref(acknowledged);
-			json_decref(unacknowledged);
-		}
-
-		// remove items from filter list that are longer in there than the configured time
-		int64_t curr_time = zclock_usecs ();
-		if (curr_time > 0) {
-			filter_list_item_t *it = zlist_first(self->filter_list);
-			int length = json_integer_value(json_object_get(self->config, "msg_filter_length"));
-			while (it != NULL) {
-				double curr_time_msec = curr_time*1.0e-3;
-				double ts_msec = it->ts*1.0e-3;
-				if (curr_time_msec - ts_msec > length) {
-					filter_list_item_t *dummy = it;
-					it = zlist_next(self->filter_list);
-					zlist_remove(self->filter_list,dummy);
-				} else
-					it = zlist_next(self->filter_list);
+			} else {
+				printf ("[%s] could not get current time\n", self->shortname);
+				it = zlist_next(self->send_msgs);
 			}
 		}
+		json_decref(acknowledged);
+		json_decref(unacknowledged);
+    }
+	// remove items from filter list that are longer in there than the configured time
+	int64_t curr_time = zclock_usecs ();
+	if (curr_time > 0) {
+		filter_list_item_t *it = zlist_first(self->filter_list);
+		int length = json_integer_value(json_object_get(self->config, "msg_filter_length"));
+		while (it != NULL) {
+			double curr_time_msec = curr_time*1.0e-3;
+			double ts_msec = it->ts*1.0e-3;
+			if (curr_time_msec - ts_msec > length) {
+				filter_list_item_t *dummy = it;
+				it = zlist_next(self->filter_list);
+				zlist_remove(self->filter_list,dummy);
+			} else
+				it = zlist_next(self->filter_list);
+		}
+	}
 }
 
 int main(int argc, char *argv[]) {
