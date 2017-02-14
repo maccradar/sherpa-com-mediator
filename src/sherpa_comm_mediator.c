@@ -460,8 +460,10 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 						return;
 					}
 					json_object_set(pl, "ID_receiver", json_string(zyre_uuid(self->remote)));
-					zyre_whispers(self->local, peerid, "%s", encode_msg("sherpa_mgs","http://kul/communication_ack.json","communication_ack",pl));
-					json_decref(pl);
+                                        // zyre_whispers(self->local, peerid, "%s", encode_msg("sherpa_mgs","http://kul/communication_ack.json","communication_ack",pl));
+					zyre_whispers(self->remote, peerid, "%s", encode_msg("sherpa_mgs","http://kul/communication_ack.json","communication_ack",pl));
+
+                                        json_decref(pl);
 					break;
 				}
 			}
