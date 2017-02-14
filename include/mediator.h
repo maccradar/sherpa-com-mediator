@@ -175,9 +175,13 @@ mediator_t * mediator_new (json_t *config) {
     
     int rc;
     if(!json_is_null(json_object_get(config, "gossip_endpoint"))) {
-    	//rc = zyre_set_endpoint (self->local, "%s", json_string_value(json_object_get(config, "local_endpoint")));
-    	//assert (rc == 0);
-    	//printf("[%s] using gossip with local endpoint 'ipc:///tmp/%s-local' \n", self->shortname, self->shortname);
+    	if(!json_is_null(json_object_get(config, "local_endpoint"))) {
+    		rc = zyre_set_endpoint (self->local, "%s", json_string_value(json_object_get(config, "local_endpoint")));
+    		assert (rc == 0);
+    	} else {
+    		printf("[%s] WARNING: no local gossip endpoint is set! \n", self->shortname);
+    	}
+
     	//  Set up gossip network for this node
     	zyre_gossip_bind (self->local, "%s", json_string_value(json_object_get(config, "gossip_endpoint")));
     	printf("[%s] using gossip with gossip hub '%s' \n", self->shortname,json_string_value(json_object_get(config, "gossip_endpoint")));
