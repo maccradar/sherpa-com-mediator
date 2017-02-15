@@ -1,0 +1,12 @@
+{
+    "short-name": "Busy Genius",
+    "long-name": "<longname>",
+    "local-network": "local",
+    "remote-network": "remote",
+    "type": "busy_genius",
+    "capabilities": ["take off", "moveto", "land"],
+    "local_endpoint": "ipc:///tmp/bg1-local",
+    "gossip_endpoint": "ipc:///tmp/bg-hub",
+    "msg_filter_length": 5000,
+    "resend_interval": 500
+}

@@ -257,7 +257,6 @@ query_t * query_new (const char *uid, const char *requester, json_msg_t *msg, za
 // File transfer protocol
 #define CHUNK_SIZE 250000
 #define PIPELINE   10
-#define TARGET "/tmp/targetfile"
 
 static void
 client_actor (zsock_t *pipe, void *args)
@@ -265,7 +264,8 @@ client_actor (zsock_t *pipe, void *args)
     char* peerid = ((char**)args)[0];
     char* uid = ((char**)args)[1];
     char* endpoint = ((char**)args)[2];
-    FILE *file = fopen (TARGET, "w");
+    char* target = ((char**)args)[3];
+    FILE *file = fopen (target, "w");
     assert (file);
     zsock_t *dealer = zsock_new_dealer(endpoint);
     
@@ -316,7 +316,7 @@ client_actor (zsock_t *pipe, void *args)
     zstr_sendm (pipe, "remote_file_done");
     zstr_sendm (pipe, peerid);
     zstr_sendm (pipe, uid);
-    zstr_send (pipe, TARGET);
+    zstr_send (pipe, target);
     
     zpoller_destroy(&poller);
     zsock_destroy(&dealer);

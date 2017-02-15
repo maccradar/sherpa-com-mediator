@@ -642,10 +642,11 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 					return;
 				}
 				int rc;
-				const char *args[3];
+				const char *args[4];
 				args[0] = strdup(peerid);
   				args[1] = strdup(uid);
 				args[2] = json_string_value(json_object_get(req, "URI"));
+				args[3] = json_string_value(json_object_get(req, "TARGET"));
                                 zactor_t * file_client = zactor_new (client_actor, args);
                                 rc = zhash_insert (self->queries, uid, file_client);
                                 // Required to know when transfer is completed

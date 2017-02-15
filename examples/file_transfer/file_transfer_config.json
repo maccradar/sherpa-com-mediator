@@ -4,7 +4,8 @@
     "type": "file_transfer_comp",
     "capabilities": ["file_transfer"],
     "local_endpoint": "ipc:///tmp/local_test_com-local",
-    "gossip_endpoint": "ipc:///tmp/local-hub",
+    "gossip_endpoint": "ipc:///tmp/donkey-hub",
     "timeout": 5000,
-    "uri": "199F24B9295F4A309E4335AC57A6E2AC:./testdata"
+    "uri": "67E90BF1F4004E4AA45297BC42E6DF64:./testdata",
+    "target": "/opt/sherpa/test.data"
 }
