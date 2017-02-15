@@ -593,10 +593,10 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 				int rc;
 				zactor_t * file_server = zactor_new (server_actor, (char*)json_string_value(json_object_get(req, "URI")));
 				// wait for endpoint
-				char* endpoint = zstr_recv(file_server);
+				char* endpoint_actor = zstr_recv(file_server);
 				const char s[2] = ":";
 				char *token;
-				token = strtok(endpoint, ":");
+				token = strtok(endpoint_actor, ":");
 				char* protocol = strdup(token);
 				token = strtok(NULL, ":");
 				char* host = strdup(token);
@@ -606,7 +606,10 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 				token=strtok(NULL, ":");
 				if (streq(host,"//*")) // replace with hostname
 				sprintf(host,"//%s", zsys_hostname());
+				char* endpoint = malloc(255);
 				sprintf(endpoint,"%s:%s:%s", protocol, host, port);
+				///TODO: check that endpoint does not overflow ie is longer than 255 charaters
+				//printf("endpoint: %s \n", endpoint);
 				rc = zhash_insert (self->queries, uid, file_server);
 
 				// Add to remote query_list
@@ -623,7 +626,8 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 				free(protocol);
 				free(host);
 				free(port);
-				free(endpoint); 
+				free(endpoint);
+				zstr_free(&endpoint_actor);
 			}
 		} else if (streq (result->type, "endpoint")) {
 			//TODO: check if the query UID matches
