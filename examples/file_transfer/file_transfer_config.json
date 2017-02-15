@@ -6,6 +6,6 @@
     "local_endpoint": "ipc:///tmp/local_test_com-local",
     "gossip_endpoint": "ipc:///tmp/donkey-hub",
     "timeout": 5000,
-    "uri": "67E90BF1F4004E4AA45297BC42E6DF64:./testdata",
-    "target": "/opt/sherpa/test.data"
+    "uri": "2BC298A07C76C6D6A46337516BEEDEBB:/tmp/hello.jpg",
+    "target": "/tmp/test.data"
 }

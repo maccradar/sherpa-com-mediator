@@ -266,7 +266,11 @@ client_actor (zsock_t *pipe, void *args)
     char* endpoint = ((char**)args)[2];
     char* target = ((char**)args)[3];
     FILE *file = fopen (target, "w");
-    assert (file);
+    //assert (file);
+    if(!file) {
+    	printf ("Cannot open target file %s for file transfer: \n", target);
+    	return;
+    }
     zsock_t *dealer = zsock_new_dealer(endpoint);
     
     //  Up to this many chunks in transit
