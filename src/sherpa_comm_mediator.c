@@ -50,7 +50,7 @@ void query_remote_file(mediator_t *self, json_msg_t *msg) {
 	 */
 	json_t *pl;
 	json_error_t error;
-	pl= json_loads(msg->payload,0,&error);
+	pl = json_loads(msg->payload,0,&error);
 	if(!pl) {
 		printf("Error parsing JSON payload! line %d: %s\n", error.line, error.text);
 		json_decref(pl);
@@ -63,20 +63,22 @@ void query_remote_file(mediator_t *self, json_msg_t *msg) {
 		printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
 		return;
 	}
-    printf("[%s] query remote file with URI: %s\n", self->shortname,uri);
     if (!uri) {
        printf("[%s] URI not specified, ignoring query!\n", self->shortname); 
        return;
     }
+    printf("[%s] query remote file with URI: %s\n", self->shortname,uri);
     const char s[2] = ":";
     char *token;
     token = strtok(uri, s);
     char* peerid = strdup(token);
+    token = strtok(uri, s);
     while( token != NULL ) { 
       token = strtok(NULL, s);
     }
     printf("[%s] Sending whisper to %s\n", self->shortname, peerid);
     zyre_whispers(self->remote, peerid, "%s", encode_msg("sherpa_mgs","http://kul/query_remote_file.json","query_remote_file",pl));
+    free(uri);
     json_decref(pl);
     
 }
@@ -574,8 +576,7 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 				}
 			}
 		} else if (streq (result->type, "query_remote_file")) {
-			
-                        //TODO: check if URI is locally available: 1) check if peerid matches, 2) check if file exists
+            //TODO: check if URI is locally available: 1) check if peerid matches, 2) check if file exists
 			json_t *req;
 			json_error_t error;
 			req = json_loads(result->payload, 0, &error);
@@ -588,6 +589,7 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 					uid = json_string_value(json_object_get(req,"UID"));
 				} else {
 					printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
+					///TODO: report back to requesting compnent
 					return;
 				}
 				int rc;
@@ -622,7 +624,7 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 				json_object_set(pl, "URI", json_string(endpoint));
 				printf("[%s] whispering server endpoint %s to peer %s\n", self->shortname,endpoint, peerid);
 				zyre_whispers(self->remote, peerid, "%s", encode_msg("sherpa_mgs","http://kul/endpoint.json","endpoint",pl));
-                                free(token);
+                free(token);
 				free(protocol);
 				free(host);
 				free(port);
@@ -630,12 +632,12 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 				zstr_free(&endpoint_actor);
 			}
 		} else if (streq (result->type, "endpoint")) {
-			//TODO: check if the query UID matches
 			json_t *req;
 			json_error_t error;
 			req = json_loads(result->payload, 0, &error);
 			if(!req) {
 				printf("Error parsing JSON payload!\n");
+				///TODO: report back to requesting compnent
 				return;
 			} else {
 				const char* uid = NULL;
@@ -643,17 +645,53 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 					uid = json_string_value(json_object_get(req,"UID"));
 				} else {
 					printf("[%s] WARNING: No query URI given! Will abort. \n", self->shortname);
+					///TODO: report back to requesting compnent
 					return;
 				}
 				int rc;
 				const char *args[4];
 				args[0] = strdup(peerid);
   				args[1] = strdup(uid);
-				args[2] = json_string_value(json_object_get(req, "URI"));
-				args[3] = json_string_value(json_object_get(req, "TARGET"));
-                                zactor_t * file_client = zactor_new (client_actor, args);
-                                rc = zhash_insert (self->queries, uid, file_client);
-                                // Required to know when transfer is completed
+				args[2] = strdup(json_string_value(json_object_get(req, "URI")));
+				// check query for target location were to store the file
+				query_t *q = (query_t *) zlist_first(self->local_query_list);
+				int found = 0;
+				while (q != NULL) {
+					if (streq(q->uid, uid)) {
+						//printf("Found query with uid: %s\n",q->uid);
+						json_t *tmp_msg;
+						printf("msg in q: %s\n",q->msg->payload);
+						tmp_msg = json_loads(q->msg->payload, 0, &error);
+						if(!tmp_msg) {
+							printf("Error parsing JSON payload!\n");
+							///TODO: report back to requesting compnent
+							return;
+						}
+						char* tar = strdup(json_string_value(json_object_get(tmp_msg, "TARGET")));
+						if(!tar) {
+							printf("TARGET for storing file not found in query!\n");
+							///TODO: report back to requesting compnent
+							json_decref(tmp_msg);
+							return;
+						}
+						found = 1;
+						args[3] = tar;
+						printf("using target: %s\n",tar);
+						json_decref(tmp_msg);
+						break;
+					}
+					q = (query_t *) zlist_next(self->local_query_list);
+				}
+				if (found == 0) {
+					// query wasn't found!
+					printf("[%s] WARNING: No query with this URI found! Will abort. \n", self->shortname);
+					///TODO: report back to requesting compnent
+					return;
+				}
+
+				zactor_t * file_client = zactor_new (client_actor, args);
+				rc = zhash_insert (self->queries, uid, file_client);
+				// Required to know when transfer is completed
   				zpoller_add(self->poller, file_client);
 			}
 		} else if (streq (result->type, "remote_file_done")) {
@@ -787,9 +825,10 @@ void handle_local_shout(mediator_t *self, zmsg_t *msg) {
 				return;
 			} else {
 				const char* uid = json_string_value(json_object_get(req,"UID"));
-                query_t * q = query_new(uid, strdup(peerid), result, NULL);
+                query_t * q = query_new(strdup(uid), strdup(peerid), result, NULL);
 				zlist_append(self->local_query_list, q); 
 				query_remote_file(self, result);
+				json_decref(req);
 			}
 		} else {
 			printf("[%s] Unknown msg type!",self->shortname);
@@ -797,7 +836,6 @@ void handle_local_shout(mediator_t *self, zmsg_t *msg) {
 	} else {
 		printf ("[%s] message could not be decoded\n", self->shortname);
 	}
-	free(result);
 	zstr_free(&peerid);
 	zstr_free(&name);
 	zstr_free(&group);
