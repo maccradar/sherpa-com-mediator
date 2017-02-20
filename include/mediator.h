@@ -4,6 +4,7 @@
 #include <zyre.h>
 #include <jansson.h>
 #include <errno.h>
+#include <sys/stat.h>
 //#include <loglevels.h>
 
 typedef struct _mediator_t {
@@ -268,15 +269,15 @@ client_actor (zsock_t *pipe, void *args)
     char* endpoint = ((char**)args)[2];
     char* target = ((char**)args)[3];
     FILE *file = fopen (target, "w");
-    printf("peerid: %s\n",peerid);
-    printf("uid: %s\n",uid);
-    printf("endpoint: %s\n",endpoint);
-    printf("target: %s\n",target);
+    printf("[client_actor] peerid: %s\n",peerid);
+    printf("[client_actor] uid: %s\n",uid);
+    printf("[client_actor] endpoint: %s\n",endpoint);
+    printf("[client_actor] atoring file at %s\n",target);
     //assert (file);
     if(!file) {
-    	printf("errno = %d\n", errno);
-    	printf("Check http://www.virtsync.com/c-error-codes-include-errno for explanation\n");
-    	printf ("Cannot open target file %s for file transfer: \n", target);
+    	printf("[client_actor] errno = %d\n", errno);
+    	printf("[client_actor] Check http://www.virtsync.com/c-error-codes-include-errno for explanation\n");
+    	printf ("[client_actor] Cannot open target file %s for file transfer: \n", target);
     	///TODO: return error to component.
     	///TODO: replace return by goto to have cleanup
     	return;
@@ -304,15 +305,16 @@ client_actor (zsock_t *pipe, void *args)
                 goto cleanup;              //  Interrupted
             char *command = zmsg_popstr (msg);
             if (streq (command, "$TERM"))
+            	printf("[client_actor] Received term signal.\n");
                 terminated = true;
             //TODO zmsg_destroy (&msg);?
         }
         while (credit) {
-            //  Ask for next chunk
+            // Ask for next chunk
             zstr_sendm  (dealer, "fetch");
             zstr_sendfm (dealer, "%ld", offset);
             zstr_sendf  (dealer, "%ld", (long) CHUNK_SIZE);
-            printf ("Sending fetch request\n");
+            printf ("[client_actor] Sending fetch request with offset %zu\n",offset);
             offset += CHUNK_SIZE;
             credit--;
         }
@@ -326,12 +328,12 @@ client_actor (zsock_t *pipe, void *args)
         fwrite (zframe_data(chunk) , sizeof(char), size, file);
         zframe_destroy (&chunk);
         total += size;
-        printf ("%zd chunks received, %zd bytes\n", chunks, total);
+        printf ("[client_actor] %zd chunks received, %zd bytes\n", chunks, total);
         if (size < CHUNK_SIZE)
         	///TODO: check if above is robust for size = 0;
             break;//terminated = true;              //  Last chunk received; exit
     } 
-    printf ("%zd chunks received, %zd bytes\n", chunks, total);
+    printf ("[client_actor] File transfer complete. Received %zd bytes\n", total);
     // Query type
     zstr_sendm (pipe, "remote_file_done");
     zstr_sendm (pipe, peerid);
@@ -359,13 +361,27 @@ server_actor (zsock_t *pipe, void *args)
     char* filename = strdup(token);
     FILE *file = fopen (filename, "r");
     if(!file) {
-		printf ("Cannot open target file %s for file transfer: \n", filename);
-		printf("errno = %d\n", errno);
+		printf ("[server_actor] Cannot open target file %s for file transfer: \n", filename);
+		printf("[server_actor] errno = %d\n", errno);
 		printf("Check http://www.virtsync.com/c-error-codes-include-errno for explanation\n");
 		///TODO: return error to component.
 		///TODO: replace return by goto to have cleanup
 		return;
 	}
+    // get file size
+    off_t file_size;
+	struct stat st;
+	if (stat(filename, &st) == 0){
+		file_size=st.st_size;
+		printf("[server_actor] Opened file of size %zu.\n",file_size);
+	}
+	else {
+		printf("[server_actor] could not determine file size. Errno: = %d\n",errno);
+		///TODO: replace return by goto to have cleanup
+		///TODO: return error to component.
+		return;
+	}
+
     zsock_t *router = zsock_new_router ("tcp://*:*");
 
     //  We have two parts per message so HWM is PIPELINE * 2
@@ -389,6 +405,7 @@ server_actor (zsock_t *pipe, void *args)
 
             char *command = zmsg_popstr (msg);
             if (streq (command, "$TERM"))
+            	printf("[server_actor] Received term signal.\n");
                 terminated = true;
             //TODO zmsg_destroy (&msg);?
         } else if (which == router) {
@@ -401,18 +418,21 @@ server_actor (zsock_t *pipe, void *args)
             //  Second frame is "fetch" command
             char *command = zstr_recv (router);
             assert (streq (command, "fetch"));
+            printf("[server_actor] Received fetch.\n");
             zstr_free(&command);
 
             //  Third frame is chunk offset in file
             char *offset_str = zstr_recv (router);
             assert (offset_str);
             size_t offset = atoi (offset_str);
+            printf("[server_actor] Offset %zu.\n",offset);
             zstr_free(&offset_str);
 
             //  Fourth frame is maximum chunk size
             char *chunksz_str = zstr_recv (router);
             assert (chunksz_str);
             size_t chunksz = atoi (chunksz_str);
+            printf("[server_actor] chunk size %zu.\n",chunksz);
             zstr_free(&chunksz_str);
 
             //  Read chunk of data from file
@@ -424,7 +444,7 @@ server_actor (zsock_t *pipe, void *args)
             size_t size = fread (data, 1, chunksz, file);
             zframe_t *chunk = zframe_new (data, size);
             //  zframe_send destroys the frames automatically
-            printf("Serving chunk\n");
+            printf("[server_actor] Serving chunk\n");
             zframe_send (&identity, router, ZFRAME_MORE);
             zframe_send (&chunk, router, 0);
             free(data);
