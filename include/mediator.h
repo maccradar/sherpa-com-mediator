@@ -4,6 +4,7 @@
 #include <zyre.h>
 #include <jansson.h>
 #include <errno.h>
+//#include <loglevels.h>
 
 typedef struct _mediator_t {
     const char *shortname;
@@ -311,6 +312,7 @@ client_actor (zsock_t *pipe, void *args)
             zstr_sendm  (dealer, "fetch");
             zstr_sendfm (dealer, "%ld", offset);
             zstr_sendf  (dealer, "%ld", (long) CHUNK_SIZE);
+            printf ("Sending fetch request\n");
             offset += CHUNK_SIZE;
             credit--;
         }
@@ -324,6 +326,7 @@ client_actor (zsock_t *pipe, void *args)
         fwrite (zframe_data(chunk) , sizeof(char), size, file);
         zframe_destroy (&chunk);
         total += size;
+        printf ("%zd chunks received, %zd bytes\n", chunks, total);
         if (size < CHUNK_SIZE)
         	///TODO: check if above is robust for size = 0;
             break;//terminated = true;              //  Last chunk received; exit
@@ -336,6 +339,7 @@ client_actor (zsock_t *pipe, void *args)
     zstr_send (pipe, target);
     
 cleanup:
+	printf ("Cleaning up client actor\n");
 	fclose(file);
     zpoller_destroy(&poller);
     zsock_destroy(&dealer);
@@ -355,7 +359,7 @@ server_actor (zsock_t *pipe, void *args)
     char* filename = strdup(token);
     FILE *file = fopen (filename, "r");
     if(!file) {
-		printf ("Cannot open target file %s for file transfer: \n", uri);
+		printf ("Cannot open target file %s for file transfer: \n", filename);
 		printf("errno = %d\n", errno);
 		printf("Check http://www.virtsync.com/c-error-codes-include-errno for explanation\n");
 		///TODO: return error to component.
@@ -420,6 +424,7 @@ server_actor (zsock_t *pipe, void *args)
             size_t size = fread (data, 1, chunksz, file);
             zframe_t *chunk = zframe_new (data, size);
             //  zframe_send destroys the frames automatically
+            printf("Serving chunk\n");
             zframe_send (&identity, router, ZFRAME_MORE);
             zframe_send (&chunk, router, 0);
             free(data);
@@ -427,6 +432,7 @@ server_actor (zsock_t *pipe, void *args)
     }
     printf("Finished serving %s on %s\n", filename, zsock_endpoint(router));
 cleanup:
+	printf("Cleaning up %s\n", zsock_endpoint(router));
     fclose (file);
     zpoller_destroy(&poller);
     zsock_destroy(&router);
