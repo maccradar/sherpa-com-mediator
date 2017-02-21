@@ -21,6 +21,7 @@ typedef struct _mediator_t {
     zhash_t *queries;
     zlist_t *remote_query_list;
     zlist_t *local_query_list;
+    const char* actor_timeout;
 } mediator_t;
 
 typedef struct _json_msg_t {
@@ -231,6 +232,13 @@ mediator_t * mediator_new (json_t *config) {
         return NULL;
     }
 
+    if (json_object_get(config, "actor_timeout")) {
+		self->actor_timeout = json_string_value(json_object_get(config, "actor_timeout"));
+	} else {
+		printf("No actor_timeout given, will use default 5s.\n");
+		self->actor_timeout = strdup("5");
+	}
+
     return self;
 }
 
@@ -268,12 +276,16 @@ client_actor (zsock_t *pipe, void *args)
     char* uid = ((char**)args)[1];
     char* endpoint = ((char**)args)[2];
     char* target = ((char**)args)[3];
+    char* timeout_str = ((char**)args)[4];
+    assert (timeout_str);
+    int timeout = atoi(timeout_str);
+
     FILE *file = fopen (target, "w");
     printf("[client_actor] peerid: %s\n",peerid);
     printf("[client_actor] uid: %s\n",uid);
     printf("[client_actor] endpoint: %s\n",endpoint);
-    printf("[client_actor] atoring file at %s\n",target);
-    //assert (file);
+    printf("[client_actor] storing file at %s\n",target);
+    printf("[client_actor] timeout %d\n",timeout);
     if(!file) {
     	printf("[client_actor] errno = %d\n", errno);
     	printf("[client_actor] Check http://www.virtsync.com/c-error-codes-include-errno for explanation\n");
@@ -282,6 +294,10 @@ client_actor (zsock_t *pipe, void *args)
     	///TODO: replace return by goto to have cleanup
     	return;
     }
+
+    // time when thread was spawned; will be updated whenever a message is received
+    int64_t com_time = zclock_mono();
+
     zsock_t *dealer = zsock_new_dealer(endpoint);
     
     //  Up to this many chunks in transit
@@ -294,8 +310,9 @@ client_actor (zsock_t *pipe, void *args)
     zsock_signal (pipe, 0);     //  Signal "ready" to caller
     
     bool terminated = false;
-    zpoller_t *poller = zpoller_new (pipe, NULL);
+    zpoller_t *poller = zpoller_new (pipe, dealer, NULL);
     while (!terminated) {
+
         void *which = zpoller_wait (poller, 1);
         ///TODO: remve hardcoded timeout
         if (which == pipe) {
@@ -309,29 +326,45 @@ client_actor (zsock_t *pipe, void *args)
                 terminated = true;
             //TODO zmsg_destroy (&msg);?
         }
-        while (credit) {
-            // Ask for next chunk
-            zstr_sendm  (dealer, "fetch");
-            zstr_sendfm (dealer, "%ld", offset);
-            zstr_sendf  (dealer, "%ld", (long) CHUNK_SIZE);
-            printf ("[client_actor] Sending fetch request with offset %zu\n",offset);
-            offset += CHUNK_SIZE;
-            credit--;
+        else if (which == dealer) {
+			zframe_t *chunk = zframe_recv (dealer);
+			if (!chunk)
+				///TODO return meaningful error to component
+				goto cleanup;
+			chunks++;
+			credit++;
+			com_time = zclock_mono(); // reset timeout when receiving a package
+			size_t size = zframe_size (chunk);
+			fwrite (zframe_data(chunk) , sizeof(char), size, file);
+			zframe_destroy (&chunk);
+			total += size;
+			printf ("[client_actor] %zd chunks received, %zd bytes\n", chunks, total);
+			if (size < CHUNK_SIZE)
+				///TODO: check if above is robust for size = 0;
+				break;//terminated = true;              //  Last chunk received; exit
         }
-        zframe_t *chunk = zframe_recv (dealer);
-        if (!chunk)
-        	///TODO return meaningful error to component
-        	goto cleanup;
-        chunks++;
-        credit++;
-        size_t size = zframe_size (chunk);
-        fwrite (zframe_data(chunk) , sizeof(char), size, file);
-        zframe_destroy (&chunk);
-        total += size;
-        printf ("[client_actor] %zd chunks received, %zd bytes\n", chunks, total);
-        if (size < CHUNK_SIZE)
-        	///TODO: check if above is robust for size = 0;
-            break;//terminated = true;              //  Last chunk received; exit
+        while (credit) {
+			// Ask for next chunk
+			zstr_sendm  (dealer, "fetch");
+			zstr_sendfm (dealer, "%ld", offset);
+			zstr_sendf  (dealer, "%ld", (long) CHUNK_SIZE);
+			printf ("[client_actor] Sending fetch request with offset %zu\n",offset);
+			offset += CHUNK_SIZE;
+			credit--;
+		}
+
+        // check for timeout
+        int64_t curr_time = zclock_mono ();
+		if (curr_time > 0) {
+			if (curr_time - com_time > (1000 * timeout)) {
+				///TODO: return error to component.
+				printf("[client_actor] timeout!\n");
+				goto cleanup;
+			}
+		} else {
+			printf ("[client_actor] could not get current time\n");
+		}
+
     } 
     printf ("[client_actor] File transfer complete. Received %zd bytes\n", total);
     // Query type
@@ -354,7 +387,7 @@ static void
 server_actor (zsock_t *pipe, void *args)
 {
     // TODO: use JSON with parsed URI upfront?
-    char* uri = strdup((char*)args);
+    char* uri = strdup(((char**)args)[0]);
     char* token;
     token = strtok(uri, ":"); // Remove host/peerid
     token = strtok(NULL, ":");
@@ -368,6 +401,12 @@ server_actor (zsock_t *pipe, void *args)
 		///TODO: replace return by goto to have cleanup
 		return;
 	}
+    char* timeout_str = ((char**)args)[1];
+	assert (timeout_str);
+	int timeout = (int) *timeout_str;
+	// time when thread was spawned; will be updated whenever a message is received
+	int64_t com_time = zclock_mono();
+
     // get file size
     off_t file_size;
 	struct stat st;
@@ -390,9 +429,9 @@ server_actor (zsock_t *pipe, void *args)
     zsock_signal (pipe, 0);     //  Signal "ready" to caller
     // Inform caller our endpoint
     zstr_send (pipe, zsock_endpoint(router));
-   
+
     bool terminated = false;
-    zpoller_t *poller = zpoller_new (pipe, router);
+    zpoller_t *poller = zpoller_new (pipe, router, NULL);
     assert(poller);
     while (!terminated) {
         void *which = zpoller_wait (poller, 1);
@@ -449,6 +488,17 @@ server_actor (zsock_t *pipe, void *args)
             zframe_send (&chunk, router, 0);
             free(data);
         }
+        // check for timeout
+		int64_t curr_time = zclock_mono ();
+		if (curr_time > 0) {
+			if (curr_time - com_time > (1000 * timeout)) {
+				///TODO: return error to component.
+				printf("[client_actor] timeout!\n");
+				goto cleanup;
+			}
+		} else {
+			printf ("[client_actor] could not get current time\n");
+		}
     }
     printf("Finished serving %s on %s\n", filename, zsock_endpoint(router));
 cleanup:
