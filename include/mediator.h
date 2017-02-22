@@ -277,6 +277,7 @@ client_actor (zsock_t *pipe, void *args)
     char* endpoint = ((char**)args)[2];
     char* target = ((char**)args)[3];
     char* timeout_str = ((char**)args)[4];
+    char* filesize = ((char**)args)[5];
     assert (timeout_str);
     int timeout = atoi(timeout_str);
 
@@ -286,6 +287,7 @@ client_actor (zsock_t *pipe, void *args)
     printf("[client_actor] endpoint: %s\n",endpoint);
     printf("[client_actor] storing file at %s\n",target);
     printf("[client_actor] timeout %d\n",timeout);
+    printf("[client_actor] file size %s\n",filesize);
     if(!file) {
     	printf("[client_actor] errno = %d\n", errno);
     	printf("[client_actor] Check http://www.virtsync.com/c-error-codes-include-errno for explanation\n");
@@ -338,7 +340,7 @@ client_actor (zsock_t *pipe, void *args)
 			fwrite (zframe_data(chunk) , sizeof(char), size, file);
 			zframe_destroy (&chunk);
 			total += size;
-			printf ("[client_actor] %zd chunks received, %zd bytes\n", chunks, total);
+			printf ("[client_actor] %zd chunks received, %zd bytes of %s\n", chunks, total, filesize);
 			if (size < CHUNK_SIZE)
 				///TODO: check if above is robust for size = 0;
 				break;//terminated = true;              //  Last chunk received; exit
@@ -429,6 +431,9 @@ server_actor (zsock_t *pipe, void *args)
     zsock_signal (pipe, 0);     //  Signal "ready" to caller
     // Inform caller our endpoint
     zstr_send (pipe, zsock_endpoint(router));
+    char file_size_str[20];
+    sprintf(file_size_str, "%zu", file_size);
+    zstr_send (pipe, file_size_str);
 
     bool terminated = false;
     zpoller_t *poller = zpoller_new (pipe, router, NULL);
@@ -464,7 +469,7 @@ server_actor (zsock_t *pipe, void *args)
             char *offset_str = zstr_recv (router);
             assert (offset_str);
             size_t offset = atoi (offset_str);
-            printf("[server_actor] Offset %zu.\n",offset);
+            printf("[server_actor] Offset %zu in file_size %zu.\n",offset, file_size);
             zstr_free(&offset_str);
 
             //  Fourth frame is maximum chunk size

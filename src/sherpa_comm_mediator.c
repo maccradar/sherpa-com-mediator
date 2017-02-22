@@ -599,6 +599,8 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 				zactor_t * file_server = zactor_new (server_actor, args);
 				// wait for endpoint
 				char* endpoint_actor = zstr_recv(file_server);
+				char* file_size = zstr_recv(file_server);
+				printf("file size %s\n",file_size);
 				const char s[2] = ":";
 				char *token;
 				token = strtok(endpoint_actor, ":");
@@ -625,6 +627,10 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 				pl = json_object();
 				json_object_set(pl, "UID", json_object_get(req,"UID"));
 				json_object_set(pl, "URI", json_string(endpoint));
+				char *eptr;
+//				off_t fs = strtoll(file_size, &eptr, 10);
+//				json_object_set(pl, "file_size", json_integer(fs));
+				json_object_set(pl, "file_size", json_string(file_size)); //use this only for printing, so will leave it a string
 				printf("[%s] whispering server endpoint %s to peer %s\n", self->shortname,endpoint, peerid);
 				zyre_whispers(self->remote, peerid, "%s", encode_msg("sherpa_mgs","http://kul/endpoint.json","endpoint",pl));
                 free(token);
@@ -652,7 +658,15 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 					return;
 				}
 				int rc;
-				const char *args[5];
+				const char* file_size = NULL;
+				if (json_object_get(req,"file_size")) {
+					file_size = json_string_value(json_object_get(req,"file_size"));
+				} else {
+					printf("[%s] WARNING: No filesize returned! Will abort. \n", self->shortname);
+					///TODO: report back to requesting compnent
+					return;
+				}
+				const char *args[6];
 				args[0] = strdup(peerid);
   				args[1] = strdup(uid);
 				args[2] = strdup(json_string_value(json_object_get(req, "URI")));
@@ -692,6 +706,7 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 					return;
 				}
 				args[4] = self->actor_timeout;
+				args[5] = file_size;
 
 				zactor_t * file_client = zactor_new (client_actor, args);
 				rc = zhash_insert (self->queries, uid, file_client);
