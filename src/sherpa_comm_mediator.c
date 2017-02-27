@@ -113,9 +113,9 @@ char* generate_mediator_uuid(mediator_t *self, json_msg_t *msg) {
 		return ret;
 	}
 	// get and add remote uuid
-	json_object_set(payload, "remote", json_string(zyre_uuid(self->remote)));
+	json_object_set_new(payload, "remote", json_string(zyre_uuid(self->remote)));
 	// get and add local uuid
-	json_object_set(payload, "local", json_string(zyre_uuid(self->local)));
+	json_object_set_new(payload, "local", json_string(zyre_uuid(self->local)));
 
 	ret = encode_msg("sherpa_mgs","http://kul/mediator_uuid.json","mediator_uuid",payload);
 	json_decref(payload);
@@ -260,6 +260,7 @@ void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 		char* encoded_msg = encode_msg("sherpa_mgs",res,type,send_rqst);
 		zyre_shouts(self->remote, group, "%s", encoded_msg);
 		free(encoded_msg);
+		free(res);
 		char* dump = json_dumps(send_rqst, JSON_ENCODE_ANY);
 		printf("sending %s \n",dump);
 		free(dump);
@@ -448,7 +449,7 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 			rec = json_object_get(req,"recipients");
 		} else {
 			printf("[%s] WARNING: No recipients given! Will abort. \n", self->shortname);
-			json_decref(req);
+			//json_decref(req);
 			return;
 		}
 		if(!json_is_array(rec)) {
@@ -479,7 +480,7 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 				}
 			}
 		}
-		json_decref(rec);
+		//json_decref(rec);
 		// filter by msg requester+uid to see if this msg has already been forwarded to local network
 		filter_list_item_t *it = zlist_first(self->filter_list);
 		int flag = 0;
@@ -501,7 +502,9 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 				printf("[%s] WARNING: No payload given! Will abort. \n", self->shortname);
 				return;
 			}
-			zyre_shouts(self->local, self->localgroup, "%s", json_dumps(json_object_get(req,"payload"), JSON_ENCODE_ANY));
+			char* encoded_msg = json_dumps(json_object_get(req,"payload"), JSON_ENCODE_ANY);
+			zyre_shouts(self->local, self->localgroup, "%s", encoded_msg);
+			free(encoded_msg);
 			// push this msg into filter list
 			filter_list_item_t *tmp = (filter_list_item_t *) zmalloc (sizeof (filter_list_item_t));
 			if (json_object_get(req,"UID")) {
@@ -523,7 +526,7 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 			printf("adding msg to filter list\n");
 		}
 	}
-	//json_decref(req);
+	json_decref(req);
 }
 
 void handle_remote_shout (mediator_t *self, zmsg_t *msg) {
@@ -543,6 +546,7 @@ void handle_remote_shout (mediator_t *self, zmsg_t *msg) {
 	} else {
 		printf ("[%s] message could not be decoded\n", self->shortname);
 	}
+	message_destroy(&result);
 	zstr_free(&message);
 	zstr_free(&peerid);
 	zstr_free(&name);
@@ -1089,6 +1093,9 @@ void process_send_msgs (mediator_t *self) {
 				filter_list_item_t *dummy = it;
 				it = zlist_next(self->filter_list);
 				zlist_remove(self->filter_list,dummy);
+				free(dummy->msg_UID);
+				free(dummy->sender);
+				free(dummy);
 			} else
 				it = zlist_next(self->filter_list);
 		}

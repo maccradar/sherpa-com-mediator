@@ -73,6 +73,7 @@ void mediator_destroy (mediator_t **self_p) {
  	zlist_destroy (&self->local_query_list);
 	zhash_destroy (&self->queries);
         zpoller_destroy (&self->poller);
+        json_decref(self->config);
         free (self);
         *self_p = NULL;
     }
@@ -154,7 +155,7 @@ mediator_t * mediator_new (json_t *config) {
     }
 
     printf("[%s] my remote UUID: %s\n", self->shortname, zyre_uuid(self->remote));
-    json_object_set(config, "peerid", json_string(zyre_uuid(self->remote)));  
+    json_object_set_new(config, "peerid", json_string(zyre_uuid(self->remote)));
     /* config is a JSON object */
     // set values for config file as zyre header.
     const char *key;
@@ -170,6 +171,7 @@ mediator_t * mediator_new (json_t *config) {
     	//printf(header_value);printf("\n");
     	zyre_set_header(self->local, key, "%s", header_value);
         zyre_set_header(self->remote, key, "%s", header_value);
+//        free(header_value);
     }
  
     if(self->verbose) {
@@ -226,11 +228,11 @@ mediator_t * mediator_new (json_t *config) {
     zpoller_t *poller =  zpoller_new (zyre_socket(self->local), zyre_socket(self->remote), NULL);
     self->poller = poller;
 
-    zhash_t *hash = zhash_new ();
-    if (!hash) {
-        mediator_destroy (&self);
-        return NULL;
-    }
+//    zhash_t *hash = zhash_new ();
+//    if (!hash) {
+//        mediator_destroy (&self);
+//        return NULL;
+//    }
 
     if (json_object_get(config, "actor_timeout")) {
 		self->actor_timeout = json_string_value(json_object_get(config, "actor_timeout"));
@@ -689,7 +691,9 @@ json_t * load_config_file(char* file) {
     	printf("Error parsing JSON file! file: %s, line %d: %s\n", error.source, error.line, error.text);
     	return NULL;
     }
-    printf("[%s] config file: %s\n", json_string_value(json_object_get(root, "short-name")), json_dumps(root, JSON_ENCODE_ANY));
+    char* dump =  json_dumps(root, JSON_ENCODE_ANY);
+    printf("[%s] config file: %s\n", json_string_value(json_object_get(root, "short-name")), dump);
+    free(dump);
     return root;
 }
 
@@ -706,9 +710,9 @@ char* encode_msg(char* metamodel, char* model, const char* type, json_t* payload
 	 */
 	json_t *msg;
 	msg = json_object();
-	json_object_set(msg, "metamodel", json_string(metamodel));
-	json_object_set(msg, "model", json_string(model));
-	json_object_set(msg, "type", json_string(type));
+	json_object_set_new(msg, "metamodel", json_string(metamodel));
+	json_object_set_new(msg, "model", json_string(model));
+	json_object_set_new(msg, "type", json_string(type));
 	json_object_set(msg, "payload", payload);
 	char *ret = json_dumps(msg, JSON_ENCODE_ANY);
 	json_decref(msg);
