@@ -239,8 +239,8 @@ int main(int argc, char *argv[]) {
                 char *peerid = zmsg_popstr (msg);
                 char *name = zmsg_popstr (msg);
                 char *message = zmsg_popstr (msg);
-                //printf ("[%s] %s %s %s %s\n", self, event, peerid, name, message);
-                printf("[%s] Received: %s from %s\n",self, event, name);
+                printf ("[%s] %s %s %s %s\n", self, event, peerid, name, message);
+                //printf("[%s] Received: %s from %s\n",self, event, name);
 				json_msg_t *result = (json_msg_t *) zmalloc (sizeof (json_msg_t));
 				if (decode_json(message, result) == 0) {
 					if streq(result->type,"peer-list") {
