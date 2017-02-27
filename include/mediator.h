@@ -272,30 +272,19 @@ query_t * query_new (const char *uid, const char *requester, json_msg_t *msg, za
 static void
 client_actor (zsock_t *pipe, void *args)
 {
-    char* peerid = ((char**)args)[0];
-    char* uid = ((char**)args)[1];
-    char* endpoint = ((char**)args)[2];
-    char* target = ((char**)args)[3];
-    char* timeout_str = ((char**)args)[4];
-    char* filesize = ((char**)args)[5];
+    char* peerid = strdup(((char**)args)[0]);
+    char* uid = strdup(((char**)args)[1]);
+    char* endpoint = strdup(((char**)args)[2]);
+    char* target = strdup(((char**)args)[3]);
+    char* timeout_str = strdup(((char**)args)[4]);
+    char* filesize = strdup(((char**)args)[5]);
+    char *eptr;
+    off_t fs = strtoll(filesize, &eptr, 10);
     assert (timeout_str);
     int timeout = atoi(timeout_str);
 
-    FILE *file = fopen (target, "w");
-    printf("[client_actor] peerid: %s\n",peerid);
-    printf("[client_actor] uid: %s\n",uid);
-    printf("[client_actor] endpoint: %s\n",endpoint);
-    printf("[client_actor] storing file at %s\n",target);
-    printf("[client_actor] timeout %d\n",timeout);
-    printf("[client_actor] file size %s\n",filesize);
-    if(!file) {
-    	printf("[client_actor] errno = %d\n", errno);
-    	printf("[client_actor] Check http://www.virtsync.com/c-error-codes-include-errno for explanation\n");
-    	printf ("[client_actor] Cannot open target file %s for file transfer: \n", target);
-    	///TODO: return error to component.
-    	///TODO: replace return by goto to have cleanup
-    	return;
-    }
+    char* success = NULL;
+    char* error = NULL;
 
     // time when thread was spawned; will be updated whenever a message is received
     int64_t com_time = zclock_mono();
@@ -311,28 +300,56 @@ client_actor (zsock_t *pipe, void *args)
     
     zsock_signal (pipe, 0);     //  Signal "ready" to caller
     
-    bool terminated = false;
     zpoller_t *poller = zpoller_new (pipe, dealer, NULL);
-    while (!terminated) {
 
+    FILE *file = fopen (target, "w");
+	printf("[client_actor] peerid: %s\n",peerid);
+	printf("[client_actor] uid: %s\n",uid);
+	printf("[client_actor] endpoint: %s\n",endpoint);
+	printf("[client_actor] storing file at %s\n",target);
+	printf("[client_actor] timeout %d\n",timeout);
+	printf("[client_actor] file size %s\n",filesize);
+	if(!file) {
+		printf("[client_actor] errno = %d\n", errno);
+		printf("[client_actor] Check http://www.virtsync.com/c-error-codes-include-errno for explanation\n");
+		printf ("[client_actor] Cannot open target file %s for file transfer: \n", target);
+		success = strdup("false");
+		error = strdup("[client_actor] Could not create file. Please check target folder.");
+		goto cleanup;
+	}
+
+    while (!zsys_interrupted) {//!zsys_interrupted
         void *which = zpoller_wait (poller, 1);
-        ///TODO: remve hardcoded timeout
+        ///TODO: remove hardcoded timeout
         if (which == pipe) {
             zmsg_t *msg = zmsg_recv (which);
-            if (!msg)
-            	///TODO return meaningful error to component
-                goto cleanup;              //  Interrupted
+            if (!msg){
+            	printf("[client_actor] Pipe interrupted.\n");
+            	success = strdup("false");
+				error = strdup("[client_actor] Pipe interrupted.");
+				fclose(file);
+				goto cleanup;              //  Interrupted
+            }
             char *command = zmsg_popstr (msg);
-            if (streq (command, "$TERM"))
+            if (streq (command, "$TERM")){
             	printf("[client_actor] Received term signal.\n");
-                terminated = true;
-            //TODO zmsg_destroy (&msg);?
+            	success = strdup("false");
+				error = strdup("[client_actor] Received $TERM signal.");
+				fclose(file);
+				zmsg_destroy (&msg);
+				goto cleanup;
+            }
+            zmsg_destroy (&msg);
         }
         else if (which == dealer) {
 			zframe_t *chunk = zframe_recv (dealer);
-			if (!chunk)
-				///TODO return meaningful error to component
+			if (!chunk){
+				printf("[client_actor] Dealer socket interrupted.\n");
+				success = strdup("false");
+				error = strdup("[client_actor] Dealer socket interrupted.");
+				fclose(file);
 				goto cleanup;
+			}
 			chunks++;
 			credit++;
 			com_time = zclock_mono(); // reset timeout when receiving a package
@@ -342,11 +359,14 @@ client_actor (zsock_t *pipe, void *args)
 			total += size;
 			printf ("[client_actor] %zd chunks received, %zd bytes of %s\n", chunks, total, filesize);
 			if (size < CHUNK_SIZE)
-				///TODO: check if above is robust for size = 0;
-				break;//terminated = true;              //  Last chunk received; exit
+				break;              //  Last chunk received; exit
         }
         while (credit) {
 			// Ask for next chunk
+        	if (offset > fs) {
+        		printf("[client_actor] offset larger than file size. Will not send fetch request.\n");
+        		break;
+        	}
 			zstr_sendm  (dealer, "fetch");
 			zstr_sendfm (dealer, "%ld", offset);
 			zstr_sendf  (dealer, "%ld", (long) CHUNK_SIZE);
@@ -354,30 +374,46 @@ client_actor (zsock_t *pipe, void *args)
 			offset += CHUNK_SIZE;
 			credit--;
 		}
-
         // check for timeout
         int64_t curr_time = zclock_mono ();
 		if (curr_time > 0) {
+			//printf("time: %zu", (curr_time - com_time));
 			if (curr_time - com_time > (1000 * timeout)) {
-				///TODO: return error to component.
+				success = strdup("false");
+				error = strdup("[client_actor] Timeout.");
 				printf("[client_actor] timeout!\n");
+				fclose(file);
+				///TODO:test
 				goto cleanup;
 			}
 		} else {
 			printf ("[client_actor] could not get current time\n");
 		}
-
-    } 
+    }
     printf ("[client_actor] File transfer complete. Received %zd bytes\n", total);
-    // Query type
+    success = strdup("true");
+    error = strdup("");
+    fclose(file);
+cleanup:
+	printf ("[client_actor] Creating report\n");
+	// Query type
     zstr_sendm (pipe, "remote_file_done");
     zstr_sendm (pipe, peerid);
     zstr_sendm (pipe, uid);
+    zstr_sendm (pipe, success);
+    zstr_sendm (pipe, error);
     zstr_send (pipe, target);
+
+    zstr_free(&peerid);
+    zstr_free(&uid);
+    zstr_free(&endpoint);
+    zstr_free(&target);
+    zstr_free(&timeout_str);
+    zstr_free(&filesize);
+    zstr_free(&success);
+    zstr_free(&error);
     
-cleanup:
-	printf ("Cleaning up client actor\n");
-	fclose(file);
+	printf ("[client_actor] Cleaning up client actor\n");
     zpoller_destroy(&poller);
     zsock_destroy(&dealer);
 }
@@ -394,18 +430,49 @@ server_actor (zsock_t *pipe, void *args)
     token = strtok(uri, ":"); // Remove host/peerid
     token = strtok(NULL, ":");
     char* filename = strdup(token);
+
+    char* success = NULL;
+    char* error = NULL;
+
+	char* uid = strdup(((char**)args)[2]);
+	char* peerid = strdup(((char**)args)[3]);
+
+	char* timeout_str = strdup(((char**)args)[1]);
+	assert (timeout_str);
+	int timeout = atoi(timeout_str);
+
+    zsock_t *router = zsock_new_router ("tcp://*:*");
+    assert(router);
+	//  We have two parts per message so HWM is PIPELINE * 2
+	zsocket_set_hwm (zsock_resolve(router), PIPELINE * 2);
+	zpoller_t *poller = zpoller_new (pipe, router, NULL);
+	assert(poller);
+
+	zsock_signal (pipe, 0);     //  Signal "ready" to caller
+
     FILE *file = fopen (filename, "r");
     if(!file) {
 		printf ("[server_actor] Cannot open target file %s for file transfer: \n", filename);
 		printf("[server_actor] errno = %d\n", errno);
 		printf("Check http://www.virtsync.com/c-error-codes-include-errno for explanation\n");
-		///TODO: return error to component.
-		///TODO: replace return by goto to have cleanup
-		return;
+		success = strdup("false");
+		error = strdup("[server_actor] Could not create file. Please check target folder.");
+		// Query type
+		zstr_sendm (pipe, "remote_file_transfer_error");
+		zstr_sendm (pipe, peerid);
+		zstr_sendm (pipe, uid);
+		zstr_sendm (pipe, success);
+		zstr_send (pipe, error);
+		printf ("[server_actor] waiting for msg\n");
+		int rc;
+		rc = zsock_wait (pipe);
+		if (rc == 123){
+			printf("[server_actor] Received signal from pipe. Cleaning up %s.\n", zsock_endpoint(router));
+		} else {
+			printf("[server_actor] Received wrong signal from pipe. Cleaning up %s anyway.\n", zsock_endpoint(router));
+		}
+		goto cleanup;
 	}
-    char* timeout_str = ((char**)args)[1];
-	assert (timeout_str);
-	int timeout = (int) *timeout_str;
 	// time when thread was spawned; will be updated whenever a message is received
 	int64_t com_time = zclock_mono();
 
@@ -418,46 +485,94 @@ server_actor (zsock_t *pipe, void *args)
 	}
 	else {
 		printf("[server_actor] could not determine file size. Errno: = %d\n",errno);
-		///TODO: replace return by goto to have cleanup
-		///TODO: return error to component.
-		return;
+		success = strdup("false");
+		error = strdup("[server_actor] could not determine file size.");
+		fclose (file);
+		// Query type
+		zstr_sendm (pipe, "remote_file_transfer_error");
+		zstr_sendm (pipe, peerid);
+		zstr_sendm (pipe, uid);
+		zstr_sendm (pipe, success);
+		zstr_send (pipe, error);
+
+		int rc;
+		rc = zsock_wait (pipe);
+		if (rc == 123){
+			printf("[server_actor] Received signal from pipe. Cleaning up %s.\n", zsock_endpoint(router));
+		} else {
+			printf("[server_actor] Received wrong signal from pipe. Cleaning up %s anyway.\n", zsock_endpoint(router));
+		}
+		goto cleanup;
 	}
 
-    zsock_t *router = zsock_new_router ("tcp://*:*");
-
-    //  We have two parts per message so HWM is PIPELINE * 2
-    zsocket_set_hwm (zsock_resolve(router), PIPELINE * 2);
-    
-    zsock_signal (pipe, 0);     //  Signal "ready" to caller
     // Inform caller our endpoint
-    zstr_send (pipe, zsock_endpoint(router));
-    char file_size_str[20];
-    sprintf(file_size_str, "%zu", file_size);
-    zstr_send (pipe, file_size_str);
+	zstr_send (pipe, zsock_endpoint(router));
+	char file_size_str[20];
+	sprintf(file_size_str, "%zu", file_size);
+	zstr_send (pipe, file_size_str);
 
-    bool terminated = false;
-    zpoller_t *poller = zpoller_new (pipe, router, NULL);
-    assert(poller);
-    while (!terminated) {
+    while (!zsys_interrupted) {
         void *which = zpoller_wait (poller, 1);
         ///TODO: replace hardcoded timeout
         if (which == pipe) {
             zmsg_t *msg = zmsg_recv (which);
-            if (!msg)
-            	///TODO: return error to component.
-            	goto cleanup;            //  Interrupted
+            if (!msg){
+            	success = strdup("false");
+				error = strdup("[server_actor] pipe interrupted");
+				fclose (file);
+				// Query type
+				zstr_sendm (pipe, "remote_file_transfer_error");
+				zstr_sendm (pipe, peerid);
+				zstr_sendm (pipe, uid);
+				zstr_sendm (pipe, success);
+				zstr_send (pipe, error);
+
+				int rc;
+				rc = zsock_wait (pipe);
+				if (rc == 123){
+					printf("[server_actor] Received signal from pipe. Cleaning up %s.\n", zsock_endpoint(router));
+				} else {
+					printf("[server_actor] Received wrong signal from pipe. Cleaning up %s anyway.\n", zsock_endpoint(router));
+				}
+				goto cleanup;
+            }
 
             char *command = zmsg_popstr (msg);
-            if (streq (command, "$TERM"))
+            if (streq (command, "$TERM")){
             	printf("[server_actor] Received term signal.\n");
-                terminated = true;
-            //TODO zmsg_destroy (&msg);?
+            	success = strdup("false");
+            	error = strdup("[server_actor] Received $TERM signal.");
+				fclose (file);
+				goto cleanup;
+            }
+            zmsg_destroy (&msg);
         } else if (which == router) {
+        	// reset timeout timer
+        	com_time = zclock_mono ();
+
             //  First frame in each message is the sender identity
             zframe_t *identity = zframe_recv (router);
-            if (!identity)
-            	///TODO: return error to component.
+            if (!identity){
+            	success = strdup("false");
+            	error = strdup("[server_actor] router interrupted");
+            	fclose (file);
+            	// Query type
+				zstr_sendm (pipe, "remote_file_transfer_error");
+				zstr_sendm (pipe, peerid);
+				zstr_sendm (pipe, uid);
+				zstr_sendm (pipe, success);
+				zstr_send (pipe, error);
+
+				int rc;
+				rc = zsock_wait (pipe);
+				if (rc == 123){
+					printf("[server_actor] Received signal from pipe. Cleaning up %s.\n", zsock_endpoint(router));
+				} else {
+					printf("[server_actor] Received wrong signal from pipe. Cleaning up %s anyway.\n", zsock_endpoint(router));
+				}
                 goto cleanup;             //  Shutting down, quit
+            }
+            //zframe_print(identity,"identity frame: ");
             
             //  Second frame is "fetch" command
             char *command = zstr_recv (router);
@@ -469,36 +584,57 @@ server_actor (zsock_t *pipe, void *args)
             char *offset_str = zstr_recv (router);
             assert (offset_str);
             size_t offset = atoi (offset_str);
-            printf("[server_actor] Offset %zu in file_size %zu.\n",offset, file_size);
-            zstr_free(&offset_str);
+            if (offset > file_size){
+            	printf("[server_actor] Offset larger than file_size. Ignoring fetch request\n");
+            } else {
+				printf("[server_actor] Offset %zu in file_size %zu.\n",offset, file_size);
+				zstr_free(&offset_str);
 
-            //  Fourth frame is maximum chunk size
-            char *chunksz_str = zstr_recv (router);
-            assert (chunksz_str);
-            size_t chunksz = atoi (chunksz_str);
-            printf("[server_actor] chunk size %zu.\n",chunksz);
-            zstr_free(&chunksz_str);
+				//  Fourth frame is maximum chunk size
+				char *chunksz_str = zstr_recv (router);
+				assert (chunksz_str);
+				size_t chunksz = atoi (chunksz_str);
+				printf("[server_actor] chunk size %zu.\n",chunksz);
+				zstr_free(&chunksz_str);
 
-            //  Read chunk of data from file
-            fseek (file, offset, SEEK_SET);
-            byte *data = malloc (chunksz);
-            assert (data);
+				//  Read chunk of data from file
+				fseek (file, offset, SEEK_SET);
+				byte *data = malloc (chunksz);
+				assert (data);
 
-            //  Send resulting chunk to client
-            size_t size = fread (data, 1, chunksz, file);
-            zframe_t *chunk = zframe_new (data, size);
-            //  zframe_send destroys the frames automatically
-            printf("[server_actor] Serving chunk\n");
-            zframe_send (&identity, router, ZFRAME_MORE);
-            zframe_send (&chunk, router, 0);
-            free(data);
+				//  Send resulting chunk to client
+				size_t size = fread (data, 1, chunksz, file);
+				zframe_t *chunk = zframe_new (data, size);
+				//  zframe_send destroys the frames automatically
+				printf("[server_actor] Serving chunk\n");
+				//zframe_print(identity,"identity frame: ");
+				zframe_send (&identity, router, ZFRAME_MORE);
+				zframe_send (&chunk, router, 0);
+				free(data);
+            }
         }
         // check for timeout
 		int64_t curr_time = zclock_mono ();
 		if (curr_time > 0) {
 			if (curr_time - com_time > (1000 * timeout)) {
-				///TODO: return error to component.
+				///TODO: test
 				printf("[client_actor] timeout!\n");
+				success = strdup("false");
+				error = strdup("[server_actor] Timeout");
+				fclose (file);
+				// Query type
+				zstr_sendm (pipe, "remote_file_transfer_error");
+				zstr_sendm (pipe, peerid);
+				zstr_sendm (pipe, uid);
+				zstr_sendm (pipe, success);
+				zstr_send (pipe, error);
+				int rc;
+				rc = zsock_wait (pipe);
+				if (rc == 123){
+					printf("[server_actor] Received signal from pipe. Cleaning up %s.\n", zsock_endpoint(router));
+				} else {
+					printf("[server_actor] Received wrong signal from pipe. Cleaning up %s anyway.\n", zsock_endpoint(router));
+				}
 				goto cleanup;
 			}
 		} else {
@@ -506,9 +642,18 @@ server_actor (zsock_t *pipe, void *args)
 		}
     }
     printf("Finished serving %s on %s\n", filename, zsock_endpoint(router));
-cleanup:
-	printf("Cleaning up %s\n", zsock_endpoint(router));
+    success = strdup("true");
+    error = strdup("");
     fclose (file);
+cleanup:
+    zstr_free(&uri);
+    zstr_free(&filename);
+    zstr_free(&timeout_str);
+    zstr_free(&uid);
+    zstr_free(&peerid);
+    zstr_free(&success);
+    zstr_free(&error);
+
     zpoller_destroy(&poller);
     zsock_destroy(&router);
 }

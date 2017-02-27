@@ -5,7 +5,7 @@
     "capabilities": ["file_transfer"],
     "local_endpoint": "ipc:///tmp/local_test_com-local",
     "gossip_endpoint": "ipc:///tmp/donkey-hub",
-    "timeout": 5000,
-    "uri": "2BC298A07C76C6D6A46337516BEEDEBB:/tmp/hello.jpg",
+    "timeout": 20000,
+    "uri": "3EB7D545476EEEB690029EF8BFA796C7:/tmp/data.test",
     "target": "/tmp/test.data"
 }
