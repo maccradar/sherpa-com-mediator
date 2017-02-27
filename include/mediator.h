@@ -252,6 +252,19 @@ void query_destroy (query_t **self_p) {
         }
 }
 
+void message_destroy (json_msg_t **self_p) {
+        assert (self_p);
+        if(*self_p) {
+        	free((*self_p)->metamodel);
+        	free((*self_p)->model);
+        	free((*self_p)->payload);
+        	free((*self_p)->type);
+            free (*self_p);
+            *self_p = NULL;
+        }
+}
+
+
 query_t * query_new (const char *uid, const char *requester, json_msg_t *msg, zactor_t *loop) {
         query_t *self = (query_t *) zmalloc (sizeof (query_t));
         if (!self)
@@ -738,7 +751,7 @@ int decode_json(char* message, json_msg_t *result) {
 		return -1;
 	}
     if (json_object_get(root, "payload")) {
-    	result->payload = strdup(json_dumps(json_object_get(root, "payload"), JSON_ENCODE_ANY));
+    	result->payload = json_dumps(json_object_get(root, "payload"), JSON_ENCODE_ANY);
 	} else {
 		printf("Error parsing JSON string! Does not conform to msg model. No payload specified.\n");
 		return -1;

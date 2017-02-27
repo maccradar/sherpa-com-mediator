@@ -77,7 +77,9 @@ void query_remote_file(mediator_t *self, json_msg_t *msg) {
       token = strtok(NULL, s);
     }
     printf("[%s] Sending whisper to %s\n", self->shortname, peerid);
-    zyre_whispers(self->remote, peerid, "%s", encode_msg("sherpa_mgs","http://kul/query_remote_file.json","query_remote_file",pl));
+    char* encoded_msg =  encode_msg("sherpa_mgs","http://kul/query_remote_file.json","query_remote_file",pl);
+    zyre_whispers(self->remote, peerid, "%s", encoded_msg);
+    free(encoded_msg);
     free(uri);
     json_decref(pl);
     
@@ -255,8 +257,12 @@ void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 		strcpy(res,"http://kul/");
 		strcat(res,type);
 		strcat(res,".json");
-		zyre_shouts(self->remote, group, "%s", encode_msg("sherpa_mgs",res,type,send_rqst));
-		printf("sending %s \n",json_dumps(send_rqst, JSON_ENCODE_ANY));
+		char* encoded_msg = encode_msg("sherpa_mgs",res,type,send_rqst);
+		zyre_shouts(self->remote, group, "%s", encoded_msg);
+		free(encoded_msg);
+		char* dump = json_dumps(send_rqst, JSON_ENCODE_ANY);
+		printf("sending %s \n",dump);
+		free(dump);
 		json_decref(send_rqst);
 		//if (res) {free(res);}
 		return;
@@ -308,7 +314,9 @@ void send_remote(mediator_t *self, json_msg_t *result, const char* group) {
 			json_object_set(pl, "error", json_string("Unknown recipients"));
 			json_object_set(pl, "recipients_delivered", tmp);
 			json_object_set(pl, "recipients_undelivered", unknown_recipients);
-			zyre_whispers(self->local, json_string_value(json_object_get(send_rqst,"local_requester")), "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
+			char* encoded_msg =  encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl);
+			zyre_whispers(self->local, json_string_value(json_object_get(send_rqst,"local_requester")), "%s", encoded_msg);
+			free(encoded_msg);
 			json_decref(tmp);
 			json_decref(pl);
 		} else {
@@ -463,9 +471,10 @@ void handle_remote_send_remote (mediator_t *self, json_msg_t *result, char *peer
 					}
 					json_object_set(pl, "ID_receiver", json_string(zyre_uuid(self->remote)));
                                         // zyre_whispers(self->local, peerid, "%s", encode_msg("sherpa_mgs","http://kul/communication_ack.json","communication_ack",pl));
-					zyre_whispers(self->remote, peerid, "%s", encode_msg("sherpa_mgs","http://kul/communication_ack.json","communication_ack",pl));
-
-                                        json_decref(pl);
+					char* encoded_msg =  encode_msg("sherpa_mgs","http://kul/communication_ack.json","communication_ack",pl);
+					zyre_whispers(self->remote, peerid, "%s", encoded_msg);
+					free(encoded_msg);
+                    json_decref(pl);
 					break;
 				}
 			}
@@ -618,7 +627,9 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 					json_object_set(pl, "error", json_string(error));
 					json_object_set(pl, "success", json_string(success));
 					printf("[%s] whispering remote peerid %s that remote_file_query's success was %s\n", self->shortname, peerid, success);
-					zyre_whispers(self->remote, peerid , "%s", encode_msg("sherpa_mgs","http://kul/remote_file_transfer_error.json","remote_file_transfer_error",pl));
+					char* encoded_msg = encode_msg("sherpa_mgs","http://kul/remote_file_transfer_error.json","remote_file_transfer_error",pl);
+					zyre_whispers(self->remote, peerid , "%s", encoded_msg);
+					free(encoded_msg);
 					int rc;
 					rc = zsock_signal (file_server, 123);
 					assert (rc == 0);
@@ -663,7 +674,9 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 	//				json_object_set(pl, "file_size", json_integer(fs));
 					json_object_set(pl, "file_size", json_string(file_size)); //use this only for printing, so will leave it a string
 					printf("[%s] whispering server endpoint %s to peer %s\n", self->shortname,endpoint, peerid);
-					zyre_whispers(self->remote, peerid, "%s", encode_msg("sherpa_mgs","http://kul/endpoint.json","endpoint",pl));
+					char* encoded_msg = encode_msg("sherpa_mgs","http://kul/endpoint.json","endpoint",pl);
+					zyre_whispers(self->remote, peerid, "%s", encoded_msg);
+					free(encoded_msg);
 					zstr_free(&file_size);
 					free(token);
 					free(protocol);
@@ -822,7 +835,9 @@ void handle_remote_whisper (mediator_t *self, zmsg_t *msg) {
 				json_object_set(pl, "target", json_string(""));
 				if(requester != NULL) {
 					printf("[%s] whispering file_transfer_report to local peerid %s\n", self->shortname, requester);
-					zyre_whispers(self->local, requester, "%s", encode_msg("sherpa_msgs", "http://kul/file_transfer_report.json", "file_transfer_report", pl));
+					char* encoded_msg = encode_msg("sherpa_msgs", "http://kul/file_transfer_report.json", "file_transfer_report", pl);
+					zyre_whispers(self->local, requester, "%s", encoded_msg);
+					free(encoded_msg);
 					zlist_remove(self->local_query_list,q);
 					query_destroy(&q);
 				} else {
@@ -877,6 +892,7 @@ void handle_local_enter(mediator_t *self, zmsg_t *msg) {
 	zstr_free(&peerid);
 	zstr_free(&name);
 	zframe_destroy(&headers_packed);
+	zhash_destroy(&headers);
 	zstr_free(&address);
 	zstr_free(&type);
 }
@@ -954,6 +970,8 @@ void handle_local_shout(mediator_t *self, zmsg_t *msg) {
 	zstr_free(&peerid);
 	zstr_free(&name);
 	zstr_free(&group);
+	zstr_free(&message);
+	message_destroy(&result);
 }
 
 void handle_local_whisper (mediator_t *self, zmsg_t *msg) {
@@ -1014,7 +1032,9 @@ void process_send_msgs (mediator_t *self) {
 			json_object_set(pl, "error", json_string("None"));
 			json_object_set(pl, "recipients_delivered", acknowledged);
 			json_object_set(pl, "recipients_undelivered", unacknowledged);
-			zyre_whispers(self->local, it->local_requester, "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
+			char* encoded_msg = encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl);
+			zyre_whispers(self->local, it->local_requester, "%s", encoded_msg);
+			free(encoded_msg);
 			json_decref(pl);
 			send_msg_request_t *dummy = it;
 			it = zlist_next(self->send_msgs);
@@ -1033,7 +1053,9 @@ void process_send_msgs (mediator_t *self) {
 					json_object_set(pl, "error", json_string("Timeout"));
 					json_object_set(pl, "recipients_delivered", acknowledged);
 					json_object_set(pl, "recipients_undelivered", unacknowledged);
-					zyre_whispers(self->local, it->local_requester, "%s", encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl));
+					char* encoded_msg = encode_msg("sherpa_mgs","http://kul/communication_report.json","communication_report",pl);
+					zyre_whispers(self->local, it->local_requester, "%s", encoded_msg);
+					free(encoded_msg);
 					json_decref(pl);
 					send_msg_request_t *dummy = it;
 					it = zlist_next(self->send_msgs);
@@ -1172,7 +1194,9 @@ int main(int argc, char *argv[]) {
 					pl = json_object();
 					json_object_set(pl, "UID", json_string(recv_uid));
 					printf("[%s] whispering remote peerid %s that query %s is done\n", self->shortname, peerid, recv_uid);
-					zyre_whispers(self->remote, peerid , "%s", encode_msg("sherpa_mgs","http://kul/remote_file_done.json","remote_file_done",pl));
+					char* encoded_msg = encode_msg("sherpa_mgs","http://kul/remote_file_done.json","remote_file_done",pl);
+					zyre_whispers(self->remote, peerid , "%s", encoded_msg);
+					free(encoded_msg);
 					json_object_set(pl, "target", json_string(file_path));
 					json_object_set(pl, "error", json_string(error));
 					json_object_set(pl, "success", json_string(success));
@@ -1188,7 +1212,9 @@ int main(int argc, char *argv[]) {
 					}
 					if(requester != NULL) {
 						printf("[%s] whispering file_transfer_report to local peerid %s\n", self->shortname, requester);
-						zyre_whispers(self->local, requester, "%s", encode_msg("sherpa_msgs", "http://kul/file_transfer_report.json", "file_transfer_report", pl));
+						char* encoded_msg = encode_msg("sherpa_msgs", "http://kul/file_transfer_report.json", "file_transfer_report", pl);
+						zyre_whispers(self->local, requester, "%s", encoded_msg);
+						free(encoded_msg);
 						zlist_remove(self->local_query_list,q);
 						query_destroy(&q);
 					} else {
@@ -1214,7 +1240,9 @@ int main(int argc, char *argv[]) {
 					json_object_set(pl, "error", json_string(error));
 					json_object_set(pl, "success", json_string(success));
 					printf("[%s] whispering remote peerid %s that remote_file_query's success was %s\n", self->shortname, peerid, success);
-					zyre_whispers(self->remote, peerid , "%s", encode_msg("sherpa_mgs","http://kul/remote_file_transfer_error.json","remote_file_transfer_error",pl));
+					char* encoded_msg = encode_msg("sherpa_mgs","http://kul/remote_file_transfer_error.json","remote_file_transfer_error",pl);
+					zyre_whispers(self->remote, peerid , "%s", encoded_msg);
+					free(encoded_msg);
 					query_t *q = (query_t *) zlist_first(self->remote_query_list);
 					// look up query and remove it
 					while (q != NULL) {
