@@ -2,10 +2,10 @@
     "short-name": "donkey1",
     "long-name": "<longname>",
     "local-network": "local",
-    "remote-network": "remote",
+    "remote-network": "sherpa-remote",
     "type": "donkey",
     "capabilities": ["charge", "moveto"],
-    "local_endpoint": "ipc:///tmp/donkey1-local",
+    "local_endpoint": "ipc:///tmp/donkey1-cm",
     "gossip_endpoint": "ipc:///tmp/donkey-hub",
     "msg_filter_length": 5000,
     "resend_interval": 500
