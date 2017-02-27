@@ -1,0 +1,12 @@
+{
+    "short-name": "R-Max",
+    "long-name": "<longname>",
+    "local-network": "local",
+    "remote-network": "remote",
+    "type": "hawk",
+    "capabilities": ["take off", "moveto", "land"],
+    "local_endpoint": "ipc:///tmp/r-max-local",
+    "gossip_endpoint": "ipc:///tmp/hawk-hub",
+    "msg_filter_length": 5000,
+    "resend_interval": 500
+}
