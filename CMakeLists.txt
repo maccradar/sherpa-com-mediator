@@ -81,3 +81,7 @@ add_test(mediator_selftest ${PROJECT_SOURCE_DIR}/bin/mediator_selftest ${PROJECT
 add_dependencies(check mediator_selftest)
 
 # gcc -ggdb $< -lczmq -lzmq - -ljansson -o $@
+
+# File transfer example binary
+add_executable(file_transfer ${PROJECT_SOURCE_DIR}/examples/file_transfer/file_transfer_example.c ${HEADER_FILES})
+target_link_libraries(file_transfer ${LIBS})

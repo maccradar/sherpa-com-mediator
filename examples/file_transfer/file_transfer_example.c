@@ -73,7 +73,7 @@ int decode_json(char* message, json_msg_t *result) {
     return 0;
 }
 
-char* query_file_transfer(const char *uid, const char *uri) {
+char* query_file_transfer(const char *uid, const char *uri, const char *target) {
 	/**
 	 * creates a query to the mediator to request a file transfer
 	 *
@@ -90,6 +90,7 @@ char* query_file_transfer(const char *uid, const char *uri) {
     payload = json_object();
     json_object_set(payload, "UID", json_string(uid));
     json_object_set(payload, "URI", json_string(uri));
+    json_object_set(payload, "TARGET", json_string(target));
     json_object_set(root, "payload", payload);
 
     return json_dumps(root, JSON_ENCODE_ANY);
@@ -205,7 +206,7 @@ int main(int argc, char *argv[]) {
     }
     printf("Connected peer has id: %s\n", peerid);
     //query for file transfer
-    char *peer_query = query_file_transfer("test_file_transfer_query1", strdup(json_string_value(json_object_get(config, "uri"))));
+    char *peer_query = query_file_transfer("test_file_transfer_query1", strdup(json_string_value(json_object_get(config, "uri"))), strdup(json_string_value(json_object_get(config, "target"))));
     zyre_shouts(local, localgroup, "%s", peer_query);
     printf("[%s] Sent peer query: %s \n",self,peer_query);
     //create a list to store queries...
@@ -238,8 +239,8 @@ int main(int argc, char *argv[]) {
                 char *peerid = zmsg_popstr (msg);
                 char *name = zmsg_popstr (msg);
                 char *message = zmsg_popstr (msg);
-                //printf ("[%s] %s %s %s %s\n", self, event, peerid, name, message);
-                printf("[%s] Received: %s from %s\n",self, event, name);
+                printf ("[%s] %s %s %s %s\n", self, event, peerid, name, message);
+                //printf("[%s] Received: %s from %s\n",self, event, name);
 				json_msg_t *result = (json_msg_t *) zmalloc (sizeof (json_msg_t));
 				if (decode_json(message, result) == 0) {
 					if streq(result->type,"peer-list") {
